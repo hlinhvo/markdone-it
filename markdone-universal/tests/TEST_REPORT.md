@@ -120,7 +120,7 @@ All 47 tests across both sidecar services (PDF and XLSX conversion) passed succe
 - **Python:** 3.12.12
 - **pytest:** 9.0.3
 - **pytest-cov:** 7.1.0
-- **Working Directory:** `/Users/linhvh/IBM-Bob/MarkDone-v2/markdone-universal`
+- **Working Directory:** `markdone-universal/`
 
 ### Dependencies Tested
 - PyMuPDF 1.27.2.3 (PDF extraction)
