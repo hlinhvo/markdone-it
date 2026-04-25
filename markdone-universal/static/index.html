@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MarkDone Universal</title>
+    <meta name="description" content="Local-first document conversion with high-fidelity Markdown output." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      /* ── Reset ────────────────────────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      /* ── Tokens & Variables ───────────────────────────────────────── */
+      :root {
+        --bg-color: #0b0f19;
+        --glass-bg: rgba(18, 24, 38, 0.65);
+        --glass-bg-hover: rgba(28, 36, 56, 0.75);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-border-highlight: rgba(255, 255, 255, 0.25);
+        --text-main: #f8f9fa;
+        --text-muted: #a0aabf;
+        --accent-primary: #0F62FE; /* Deep Blue */
+        --accent-glow: #4facfe;    /* Light Blue / Cyan */
+        --accent-success: #24a148;
+        --accent-danger: #fa4d56;
+        --radius-sm: 8px;
+        --radius-lg: 16px;
+        --font-body: "IBM Plex Sans", sans-serif;
+        --font-mono: "IBM Plex Mono", monospace;
+      }
+
+      /* ── Base Styling & Mesh Background ───────────────────────────── */
+      body {
+        font-family: var(--font-body);
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--text-main);
+        background-color: var(--bg-color);
+        /* Dynamic CSS Mesh Gradient */
+        background-image: 
+          radial-gradient(at 0% 0%, rgba(15, 98, 254, 0.25) 0px, transparent 50%),
+          radial-gradient(at 100% 0%, rgba(79, 172, 254, 0.15) 0px, transparent 50%),
+          radial-gradient(at 100% 100%, rgba(36, 161, 72, 0.1) 0px, transparent 50%),
+          radial-gradient(at 0% 100%, rgba(11, 15, 25, 1) 0px, transparent 50%);
+        background-attachment: fixed;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .app-container {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 60px 24px;
+      }
+
+      /* ── Hero Section ─────────────────────────────────────────────── */
+      .hero {
+        text-align: center;
+        margin-bottom: 48px;
+        animation: fadeInDown 0.8s ease-out;
+      }
+      .hero-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        background: rgba(15, 98, 254, 0.2);
+        border: 1px solid rgba(15, 98, 254, 0.4);
+        color: #78a9ff;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 16px;
+      }
+      .hero h1 {
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, #ffffff 0%, #a0aabf 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .hero p {
+        font-size: 16px;
+        color: var(--text-muted);
+        max-width: 600px;
+        margin: 0 auto;
+      }
+
+      /* ── Glassmorphic Cards ───────────────────────────────────────── */
+      .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        margin-bottom: 24px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+      }
+      .glass-card:hover {
+        border-color: var(--glass-border-highlight);
+        box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+      }
+
+      /* ── Section Headers ──────────────────────────────────────────── */
+      .section-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+      .section-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(15, 98, 254, 0.2);
+        color: #78a9ff;
+        margin-right: 12px;
+        font-size: 16px;
+      }
+      .section-heading {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .section-desc {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: -12px;
+        margin-bottom: 20px;
+        margin-left: 44px;
+      }
+
+      /* ── Metrics Grid ─────────────────────────────────────────────── */
+      .metric-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        margin-bottom: 32px;
+      }
+      .metric-card {
+        padding: 20px;
+        border-radius: var(--radius-lg);
+        background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(10px);
+        text-align: center;
+      }
+      .metric-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #fff;
+        display: block;
+        margin-bottom: 4px;
+      }
+      .metric-label {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      /* ── Controls (Settings) ──────────────────────────────────────── */
+      .controls-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .control-group label {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #78a9ff;
+        margin-bottom: 8px;
+      }
+      select, input[type="file"] {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-sm);
+        color: var(--text-main);
+        font-family: var(--font-body);
+        font-size: 14px;
+        padding: 10px 14px;
+        cursor: pointer;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      select:focus {
+        border-color: var(--accent-glow);
+        box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.2);
+      }
+      select option {
+        background: var(--bg-color);
+        color: var(--text-main);
+      }
+
+      .toggle-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+      }
+      .toggle-group input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent-primary);
+        cursor: pointer;
+      }
+      .toggle-group span {
+        font-size: 14px;
+        color: var(--text-main);
+      }
+
+      /* ── Dropzone ─────────────────────────────────────────────────── */
+      .dropzone {
+        border: 2px dashed rgba(79, 172, 254, 0.4);
+        background: rgba(0, 0, 0, 0.15);
+        padding: 48px 24px;
+        text-align: center;
+        border-radius: var(--radius-lg);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      .dropzone:hover {
+        background: rgba(79, 172, 254, 0.05);
+        border-color: var(--accent-glow);
+      }
+      .dropzone.dragover {
+        background: rgba(79, 172, 254, 0.15);
+        border-color: var(--accent-glow);
+        transform: scale(1.02);
+      }
+      .dropzone-icon {
+        font-size: 40px;
+        margin-bottom: 16px;
+        display: block;
+        opacity: 0.8;
+      }
+      .dropzone-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .dropzone-hint {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+      }
+
+      /* ── Buttons ──────────────────────────────────────────────────── */
+      .action-bar {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .btn {
+        font-family: var(--font-body);
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 24px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s ease;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent-primary) 0%, #0050D0 100%);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(15, 98, 254, 0.4);
+      }
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(15, 98, 254, 0.6);
+      }
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--glass-border);
+        color: var(--text-main);
+      }
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .btn-danger-ghost {
+        background: transparent;
+        color: var(--accent-danger);
+        border: 1px solid rgba(250, 77, 86, 0.3);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        padding: 8px 16px;
+        border-radius: var(--radius-sm);
+      }
+      .btn-danger-ghost:hover {
+        background: rgba(250, 77, 86, 0.1);
+      }
+      
+      .btn-download {
+        background: rgba(36, 161, 72, 0.2);
+        color: #42be65;
+        border: 1px solid rgba(36, 161, 72, 0.4);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 20px;
+        text-decoration: none;
+        transition: all 0.2s;
+      }
+      .btn-download:hover {
+        background: rgba(36, 161, 72, 0.3);
+      }
+
+      .remove-btn {
+        background: transparent;
+        border: 1px solid var(--glass-border);
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .remove-btn:hover {
+        border-color: var(--accent-danger);
+        color: var(--accent-danger);
+      }
+
+      /* ── Tables ───────────────────────────────────────────────────── */
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      thead th {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #78a9ff;
+        text-align: left;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(120, 169, 255, 0.2);
+      }
+      tbody td {
+        padding: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: var(--text-main);
+      }
+      tbody tr:last-child td { border-bottom: none; }
+      tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+      table td:last-child, table th:last-child { text-align: right; }
+
+      /* Dynamic Select in Table */
+      td select {
+        padding: 4px 8px;
+        font-size: 12px;
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      /* ── Status Pills ─────────────────────────────────────────────── */
+      .status-pill {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 20px;
+        padding: 4px 12px;
+        display: inline-block;
+        text-transform: uppercase;
+      }
+      .status-queued     { background: rgba(255, 255, 255, 0.1); color: #e0e0e0; }
+      .status-uploading  { background: rgba(15, 98, 254, 0.2); color: #78a9ff; }
+      .status-converting { background: rgba(241, 194, 27, 0.2); color: #f1c21b; }
+      .status-completed  { background: rgba(36, 161, 72, 0.2); color: #42be65; }
+      .status-failed     { background: rgba(250, 77, 86, 0.2); color: #ff8389; }
+
+      /* ── Misc ─────────────────────────────────────────────────────── */
+      .small { font-size: 12px; color: var(--text-muted); }
+      .output-link { color: var(--accent-glow); text-decoration: none; font-weight: 500; }
+      .output-link:hover { text-decoration: underline; }
+      .feedback-bar {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: center;
+        margin-top: 40px;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: var(--radius-lg);
+      }
+
+      /* Animations */
+      @keyframes fadeInDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-container">
+
+      <!-- Hero Header -->
+      <section class="hero">
+        <span class="hero-badge">Enterprise Engine</span>
+        <h1>MarkDone Intelligence</h1>
+        <p>Secure, local-first document processing pipeline with high-fidelity output. End-to-end encrypted and completely isolated on your machine.</p>
+      </section>
+
+      <!-- Dashboard Metrics -->
+      <section class="metric-grid">
+        <div class="metric-card">
+          <span class="metric-value" id="metric-files">0</span>
+          <span class="metric-label">Items in Staging</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-value" id="metric-target">vault_md</span>
+          <span class="metric-label">Active Format</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-value" id="metric-health">Checking…</span>
+          <span class="metric-label">Engine Status</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-value" id="metric-concurrency">-</span>
+          <span class="metric-label">Concurrency Level</span>
+        </div>
+      </section>
+
+      <!-- Conversion Pipeline Settings -->
+      <div class="glass-card">
+        <div class="section-header">
+          <div class="section-icon">⚙️</div>
+          <h2 class="section-heading">Pipeline Configuration</h2>
+        </div>
+        <p class="section-desc">Global settings applied to new files added to the staging queue.</p>
+        
+        <div class="controls-grid">
+          <div class="control-group">
+            <label for="target-select">Global Output Format</label>
+            <select id="target-select">
+              <option value="vault_md" selected>Vault Markdown</option>
+              <option value="html">HTML Render</option>
+              <option value="docx">Microsoft Word (DOCX)</option>
+              <option value="pdf">Portable Document (PDF)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="source-type-select">Source Analysis Profile</label>
+            <select id="source-type-select">
+              <option value="auto" selected>Auto Detect via ML</option>
+              <option value="ppt">Presentation (PPT)</option>
+              <option value="word">Document (Word)</option>
+              <option value="generic">Generic Text</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Extraction Features</label>
+            <div class="toggle-group">
+              <input id="frontmatter-toggle" type="checkbox" checked />
+              <span>Inject YAML Frontmatter</span>
+            </div>
+            <div class="toggle-group">
+              <input id="high-fidelity-toggle" type="checkbox" checked />
+              <span>High-Fidelity Engine</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dropzone (Secure Vault) -->
+      <div class="glass-card">
+        <div class="section-header">
+          <div class="section-icon">🔒</div>
+          <h2 class="section-heading">Secure Data Ingestion</h2>
+        </div>
+        <p class="section-desc">Upload documents into the secure local vault. Files never leave your device.</p>
+
+        <div id="dropzone" class="dropzone">
+          <span class="dropzone-icon">📥</span>
+          <p class="dropzone-title">Drop payloads to secure vault</p>
+          <p class="dropzone-hint">Supported formats: PDF, MD, MARKDOWN, XLSX, XLSM</p>
+          <input id="file-input" type="file" accept=".pdf,application/pdf,.md,.markdown,text/markdown,.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" multiple />
+        </div>
+        
+        <div class="action-bar">
+          <button id="convert-button" class="btn btn-primary">Process Queue</button>
+          <button id="clear-button" class="btn btn-secondary">Purge Staging</button>
+        </div>
+      </div>
+
+      <!-- Transaction Queue -->
+      <div class="glass-card">
+        <div class="section-header">
+          <div class="section-icon">🔄</div>
+          <h2 class="section-heading">Processing Queue</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Document Name</th>
+                <th>Size</th>
+                <th>Target</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Output</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="queue-body">
+              <tr>
+                <td colspan="7" class="small" style="text-align: center; padding: 24px;">No transactions staged.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Secure Artifacts (History) -->
+      <div class="glass-card output-section">
+        <div class="section-header">
+          <div class="section-icon">🛡️</div>
+          <h2 class="section-heading">Secure Artifacts Vault</h2>
+        </div>
+        <p class="section-desc">Completed conversions ready for secure extraction to host device.</p>
+        
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Artifact Name</th>
+                <th>Size</th>
+                <th>Processed Timestamp</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="output-body">
+              <tr>
+                <td colspan="4" class="small" style="text-align: center; padding: 24px;">Vault is empty.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="action-bar" style="margin-top: 20px;">
+          <button id="clear-history-button" class="btn-danger-ghost">🗑 Purge Artifacts</button>
+        </div>
+      </div>
+
+      <p id="feedback" class="feedback-bar">Awaiting commands.</p>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
