@@ -140,6 +140,57 @@ This repository has been structured with 6 logical commits representing the v1 t
 
 ---
 
+### 7. Comprehensive Test Suites (18da151)
+**Type:** `feat(tests)`
+**Message:** Add comprehensive test suites for PDF and XLSX converters
+
+**Files Added:**
+- `markdone-universal/tests/test_pdf_sidecar.py` - PDF converter test suite (867 lines)
+- `markdone-universal/tests/test_xlsx_converter.py` - XLSX converter test suite (717 lines)
+- `markdone-universal/tests/README.md` - Testing documentation (168 lines)
+- `markdone-universal/tests/TEST_SUITE_SUMMARY.md` - Coverage summary (177 lines)
+- `markdone-universal/tests/TEST_REPORT.md` - Final test report (285 lines)
+- `markdone-universal/tests/GITHUB_CHECKLIST.md` - GitHub commit guide (197 lines)
+- `markdone-universal/services/legacy/INTERFACE.md` - Legacy module documentation (717 lines)
+- `markdone-universal/requirements-dev.txt` - Development dependencies (20 lines)
+
+**Files Modified:**
+- `markdone-universal/.gitignore` - Added Python and test artifact exclusions
+
+**Test Coverage:**
+
+**PDF Sidecar Tests (23 tests):**
+- Contract validation (2 tests) - JSON payload structure for PPT/Word
+- Markdown output (4 tests) - Frontmatter, structure, file creation
+- Source type detection (5 tests) - Auto-detection and explicit types
+- Image/page counting (3 tests) - Correct counts for PPT/Word
+- Error handling (3 tests) - Missing files, unsupported types, extraction failures
+- Markdown input (2 tests) - Passthrough and frontmatter addition
+- Integration tests (3 tests) - Full pipelines and directory creation
+- Edge cases (2 tests) - Empty slides, special characters
+
+**XLSX Converter Tests (24 tests):**
+- Contract validation (2 tests) - JSON payload for Markdown/JSON outputs
+- Markdown output (6 tests) - Frontmatter, lang:en, headings, tables, multiple sheets
+- JSON output (2 tests) - Structure validation, lang:en field
+- Compliance detection (3 tests) - Keyword detection in Markdown/JSON
+- Error handling (3 tests) - Missing files, unsupported extensions, empty workbooks
+- Edge cases (6 tests) - Pipe escaping, truncation, row caps, newlines, empty cells
+- Integration tests (2 tests) - Mixed sheet types, .xlsm support
+
+**Key Features:**
+- All 47 tests passing (11.77s execution time)
+- No external test files required (programmatic fixtures)
+- Complete CLI contract validation
+- Subprocess testing for real-world behavior
+- Comprehensive error code coverage (0, 1, 2, 3, 4)
+- Legacy module interface documentation with minimum viable mocks
+- Development environment setup guide
+
+**Impact:** 3,156 insertions across 9 files
+
+---
+
 ## Release Tag: v2.0.0
 
 **Tag:** `v2.0.0`  
@@ -175,9 +226,9 @@ This repository has been structured with 6 logical commits representing the v1 t
 
 ## Statistics
 
-**Total Commits:** 6  
-**Total Files Changed:** 27  
-**Total Insertions:** 6,158 lines  
+**Total Commits:** 7
+**Total Files Changed:** 36
+**Total Insertions:** 9,314 lines
 **Release Tags:** 1 (v2.0.0)
 
 ## Commit Convention
@@ -186,6 +237,7 @@ All commits follow the Conventional Commits specification:
 - `docs:` - Documentation changes
 - `build:` - Build system and infrastructure
 - `feat:` - New features
+- `feat(tests):` - Test suite additions
 - `test:` - Test additions
 
 ## Next Steps
