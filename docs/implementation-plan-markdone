@@ -1,0 +1,108 @@
+I have broken the implementation into four Specs-Driven Development (SDD) modules.
+
+These prompts are designed to be executed sequentially to maintain a clean state and avoid context drift.
+
+Module 1: Infrastructure & Environment Scaffolding
+Goal: Initialize the project structure, Deno 2.x environment, and Podman configuration.
+
+Prompt:
+Act as a Senior DevOps Engineer. Initialize a project named markdone-universal optimized for Podman Desktop 1.26+ on macOS.
+
+Project Structure:
+Create the following directory hierarchy:
+
+/services: For conversion logic (Pandoc wrappers and Python sidecar).
+
+/static: For the Preact/HTM frontend.
+
+/uploads and /outputs: Ephemeral storage.
+
+Technical Specs:
+
+Deno Config: Generate a deno.json using Deno 2.x standards. Include tasks for dev (with --watch and --allow-all) and start.
+
+Podman Kube Manifest: Create podman-kube.yaml for Kube Play.
+
+Port mapping: 7482:7482.
+
+Resource Requests: CPU 50m, RAM 128Mi (Sleep Mode).
+
+Resource Limits: CPU 4, RAM 2Gi (Burst Mode for M3 Pro optimization).
+
+Volume Mount: Map /Users/<USER>/Documents/VaultVault to /app/outputs/obsidian.
+
+Containerfile: Use denoland/deno:alpine as the base. Install pandoc, python3, py3-pip, and libmupdf via apk.
+
+Setup Script: Create a setup.sh that checks for Podman and Deno installations.
+
+Module 2: The Orchestrator (Backend API)
+Goal: Build the Deno/Oak server that manages the dual-engine logic (Universal vs. High-Fidelity).
+
+Prompt:
+Act as a Backend Architect. Implement the Deno/Oak server in server.ts with the following logic:
+
+API Endpoints:
+
+GET /health: Returns system status and verifies if pandoc and python3 are in the PATH.
+
+POST /api/convert: Handles multipart/form-data.
+
+Core Logic:
+
+Engine Selection: >    - If the target is "Vault MD," route the file to a Python sidecar (services/high_fidelity_pdf.py) using Deno.Command.
+
+For all other conversions (DOCX, HTML, PDF), use the Pandoc CLI.
+
+M3 Pro Concurrency: Implement a std/async/Semaphore with a limit of 6 concurrent processes to leverage performance cores without hitting the 2Gi RAM limit.
+
+High-Fidelity Engine: Implement the legacy PDFExtractor logic using PyMuPDF (fitz) within the Python sidecar to preserve 30MB+ FSI deck extraction quality.
+
+Cleanup: Implement a Deno.cron or a setInterval that purges files in /uploads older than 10 minutes.
+
+Module 3: Frontend (Staging Queue & Carbon-Lite UI)
+Goal: Create the zero-build SPA using Preact, HTM, and Pico CSS with an IBM Carbon aesthetic.
+
+Prompt:
+Act as a Frontend Engineer. Build a single-page application in /static/index.html and /static/app.js.
+
+UI Requirements:
+
+Styling: Use Pico CSS for the layout foundation. Apply an IBM Carbon v11 color palette:
+
+Background: #F4F4F4.
+
+Primary Buttons: #24A148 (Carbon Green).
+
+Typography: Use IBM Plex Sans via Google Fonts.
+
+Staging Queue System: >    - Implement a "Staging Area" where users can drag-and-drop multiple PDFs.
+
+Files should be listed in a table with metadata (Name, Size, Source Type).
+
+Users can remove individual files before hitting "Convert All."
+
+Feature Toggles: Add a "High-Fidelity Vault Mode" toggle that enables YAML frontmatter and PyMuPDF-based extraction.
+
+State Management: Use Preact signals to track upload progress and conversion status for the batch.
+
+Module 4: Integration & "Gold Standard" Testing
+Goal: Ensure the end-to-end flow from Podman deployment to Vault vault synchronization works.
+
+Prompt:
+Act as a Quality Assurance Engineer. Create a final integration and test suite.
+
+Tasks:
+
+Deployment Script: Create deploy.sh that builds the image, stops any existing markdone pod, and runs podman kube play podman-kube.yaml.
+
+Validation Script: Create a Deno script (tests/integration.ts) that:
+
+Uploads a test 30MB PDF.
+
+Verifies the output MD file exists in the mapped Vault vault directory.
+
+Checks for correct YAML frontmatter in the output.
+
+Graceful Shutdown: Ensure server.ts catches SIGINT and SIGTERM to clean the /uploads directory and close any active Pandoc sub-processes.
+
+Documentation: Generate a README.md including the "Burst Mode" vs. "Sleep Mode" resource specs for Podman.
