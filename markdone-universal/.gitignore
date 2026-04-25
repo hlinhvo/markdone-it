@@ -4,3 +4,27 @@ outputs/
 build.log
 .agent/
 *.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+test-report.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

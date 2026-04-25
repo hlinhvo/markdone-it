@@ -1,0 +1,21 @@
+# Development and testing dependencies for MarkDone Universal
+# Install with: pip install -r requirements-dev.txt
+
+# Core dependencies (matching Containerfile)
+PyMuPDF>=1.24.0
+PyYAML
+requests
+regex
+lxml
+beautifulsoup4
+Pillow
+loguru
+click
+tqdm
+weasyprint
+openpyxl>=3.1
+pandas>=2.0
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
