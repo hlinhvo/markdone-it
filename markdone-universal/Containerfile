@@ -1,0 +1,72 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Stage 1: Deno binary extractor
+# ──────────────────────────────────────────────────────────────────────────────
+FROM denoland/deno:debian-2.2.4 AS deno-bin
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Stage 2: Unified Runtime
+#
+# We use python:3.11-slim as our final base to ensure the Python runtime is
+# exactly the same version used to resolve prebuilt manylinux wheels.
+# This prevents all ABI, C-extension, and site-packages vs dist-packages
+# mismatch issues for packages like Pillow and PyMuPDF.
+# ──────────────────────────────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+# Copy the Deno executable from the official image
+COPY --from=deno-bin /usr/bin/deno /usr/bin/deno
+
+# Install Pandoc and system utilities
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bash \
+        pandoc \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libcairo2 \
+        libgdk-pixbuf-2.0-0 \
+        libffi8 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies natively into the standard site-packages
+RUN pip3 install --no-cache-dir \
+    "PyMuPDF>=1.24.0" \
+    PyYAML \
+    requests \
+    regex \
+    lxml \
+    beautifulsoup4 \
+    Pillow \
+    loguru \
+    click \
+    tqdm \
+    weasyprint \
+    "openpyxl>=3.1" \
+    "pandas>=2.0"
+
+WORKDIR /app
+COPY . /app
+
+# Create necessary directories, setup DENO_DIR, and create deno user
+ENV DENO_DIR=/app/.deno
+
+RUN mkdir -p \
+        /app/uploads \
+        /app/outputs \
+        /app/outputs/vault \
+        /app/static \
+        /app/services \
+        /app/tests \
+        /app/.deno && \
+    groupadd -r deno && useradd -r -g deno -d /app deno && \
+    chown -R deno:deno /app
+
+USER deno
+
+# Cache Deno dependencies at build time so the runtime doesn't need to download them
+RUN deno cache server.ts
+
+EXPOSE 7482
+
+CMD ["deno", "run", "--allow-all", "server.ts"]
