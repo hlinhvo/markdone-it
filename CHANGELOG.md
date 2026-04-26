@@ -81,7 +81,7 @@ Python Process:
 
 ---
 
-## [2.0.0] - 2024-01-XX (Initial Release)
+## [2.0.0] - 2024-01-15 (Initial Release)
 
 ### Added
 - Complete rewrite from v1 to v2 architecture
