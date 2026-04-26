@@ -14,11 +14,18 @@ Large PDF and XLSX files consume significant tokens when uploaded directly to AI
 
 ## Features
 
-### v2 (Current)
+### v2.2 (Current)
+- **Bulk download as ZIP** — download multiple converted files in a single archive
+- **Smart download behavior** — single files download directly, 2+ files download as ZIP with timestamps
+- **User-friendly UI** — clear terminology ("Completed Files" instead of technical jargon)
+- **Responsive table layouts** — long filenames handled gracefully without breaking layout
+
+### v2.1 (Retained)
 - XLSX and XLSM to Markdown table conversion (`vault_md`)
 - XLSX and XLSM to structured JSON conversion (`vault_json`) — most token-efficient format for RAG
 - Auto-detection of compliance matrix sheets (RFP/RFI workflows)
 - YAML frontmatter with `lang: en` tag on all Markdown outputs
+- **Real-time progress tracking** via Server-Sent Events for large file conversions
 
 ### v1 (Retained)
 - High-fidelity PDF to Markdown conversion (printed PDFs with selectable text)
@@ -157,6 +164,14 @@ curl -X POST http://localhost:7482/api/convert \
 
 Download a converted output file by name.
 
+### `POST /api/download-queue-zip`
+
+**New in v2.2**: Download multiple files from the processing queue as a ZIP archive with timestamped filename.
+
+### `GET /api/download-history-zip`
+
+**New in v2.2**: Download all completed files from history as a ZIP archive with timestamped filename.
+
 ### `GET /api/outputs`
 
 List all output files with download URLs, sizes, and modification timestamps.
@@ -175,7 +190,8 @@ Clear all output files.
 4. Select target format and source type.
 5. Toggle YAML frontmatter for Markdown output.
 6. Click **Convert All**.
-7. Download individual outputs from the results list.
+7. Download files individually or use **Download All** to get multiple files as a ZIP archive.
+8. View completed files in the **Completed Files** section with download history.
 
 ---
 
