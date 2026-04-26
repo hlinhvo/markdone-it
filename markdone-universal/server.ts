@@ -10,6 +10,20 @@ type SourceType = "auto" | "ppt" | "word" | "generic";
 type EffectiveSourceType = "ppt" | "word" | "generic";
 type FileStatus = "queued" | "uploading" | "converting" | "completed" | "failed";
 
+interface SSEConnection {
+  conversionId: string;
+  controller: ReadableStreamDefaultController;
+  lastActivity: number;
+}
+
+interface ProgressEvent {
+  type: "progress";
+  progress: number;
+  current: number;
+  total: number;
+  message: string;
+}
+
 interface AppConfig {
   port: number;
   bindHost: string;
@@ -41,6 +55,7 @@ interface ConversionResult {
   downloadUrl: string | null;
   durationMs: number;
   error: ConversionError | null;
+  conversionId?: string;
 }
 
 interface PythonSuccessPayload {
@@ -100,6 +115,54 @@ const startedAt = Date.now();
 let shuttingDown = false;
 let activeConversions = 0;
 const activeProcesses = new Set<Deno.ChildProcess>();
+
+// SSE connection management
+const sseConnections = new Map<string, SSEConnection>();
+
+function relayProgressToSSE(conversionId: string, data: ProgressEvent) {
+  const connection = sseConnections.get(conversionId);
+  if (connection) {
+    const encoder = new TextEncoder();
+    const message = `event: progress\ndata: ${JSON.stringify(data)}\n\n`;
+    try {
+      connection.controller.enqueue(encoder.encode(message));
+      connection.lastActivity = Date.now();
+    } catch {
+      // Connection closed, remove it
+      sseConnections.delete(conversionId);
+    }
+  }
+}
+
+function sendSSEComplete(conversionId: string, data: Record<string, unknown>) {
+  const connection = sseConnections.get(conversionId);
+  if (connection) {
+    const encoder = new TextEncoder();
+    const message = `event: complete\ndata: ${JSON.stringify(data)}\n\n`;
+    try {
+      connection.controller.enqueue(encoder.encode(message));
+      connection.controller.close();
+    } catch {
+      // Ignore errors on close
+    }
+    sseConnections.delete(conversionId);
+  }
+}
+
+function sendSSEError(conversionId: string, error: ConversionError) {
+  const connection = sseConnections.get(conversionId);
+  if (connection) {
+    const encoder = new TextEncoder();
+    const message = `event: error\ndata: ${JSON.stringify(error)}\n\n`;
+    try {
+      connection.controller.enqueue(encoder.encode(message));
+      connection.controller.close();
+    } catch {
+      // Ignore errors on close
+    }
+    sseConnections.delete(conversionId);
+  }
+}
 
 function createError(
   code: string,
@@ -216,6 +279,7 @@ async function runPythonConversion(
   outputPath: string,
   sourceType: SourceType,
   yamlFrontmatter: boolean,
+  conversionId?: string,
 ): Promise<{ sourceType: EffectiveSourceType; durationMs: number }> {
   const release = await semaphore.acquire();
   activeConversions += 1;
@@ -240,15 +304,92 @@ async function runPythonConversion(
     }).spawn();
 
     activeProcesses.add(proc);
-    const output = await proc.output();
+
+    // Collect both stdout and stderr
+    const stdoutChunks: Uint8Array[] = [];
+    const stderrChunks: Uint8Array[] = [];
+    const decoder = new TextDecoder();
+    
+    // Stream stdout
+    const stdoutPromise = (async () => {
+      const reader = proc.stdout.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          stdoutChunks.push(value);
+        }
+      } catch {
+        // Stream closed or error, ignore
+      }
+    })();
+    
+    // Stream stderr for progress updates
+    const stderrPromise = (async () => {
+      const reader = proc.stderr.getReader();
+      let buffer = "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          // Collect chunks for later
+          stderrChunks.push(value);
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                if (data.type === "progress" && conversionId) {
+                  relayProgressToSSE(conversionId, data as ProgressEvent);
+                }
+              } catch {
+                // Not JSON progress event, ignore
+              }
+            }
+          }
+        }
+      } catch {
+        // Stream closed or error, ignore
+      }
+    })();
+
+    // Wait for process to complete and all streams to finish
+    const [status] = await Promise.all([
+      proc.status,
+      stdoutPromise,
+      stderrPromise,
+    ]);
+    
     activeProcesses.delete(proc);
 
-    if (!output.success) {
-      const message = new TextDecoder().decode(output.stderr).trim() || "High-fidelity conversion failed";
+    if (!status.success) {
+      // Reconstruct stderr from collected chunks
+      const totalLength = stderrChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      const stderrData = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of stderrChunks) {
+        stderrData.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const message = new TextDecoder().decode(stderrData).trim() || "High-fidelity conversion failed";
       throw new Error(message);
     }
 
-    const payload = JSON.parse(new TextDecoder().decode(output.stdout).trim()) as PythonSuccessPayload;
+    // Reconstruct stdout from collected chunks
+    const stdoutLength = stdoutChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const stdoutData = new Uint8Array(stdoutLength);
+    let stdoutOffset = 0;
+    for (const chunk of stdoutChunks) {
+      stdoutData.set(chunk, stdoutOffset);
+      stdoutOffset += chunk.length;
+    }
+    
+    const payload = JSON.parse(new TextDecoder().decode(stdoutData).trim()) as PythonSuccessPayload;
     return {
       sourceType: payload.sourceType ?? normalizeSourceType(sourceType),
       durationMs: payload.durationMs ?? (Date.now() - started),
@@ -299,6 +440,7 @@ async function runXlsxConversion(
   outputPath: string,
   target: "vault_md" | "vault_json",
   yamlFrontmatter: boolean,
+  conversionId?: string,
 ): Promise<{ sheetsProcessed: number; rowsProcessed: number; durationMs: number }> {
   const release = await semaphore.acquire();
   activeConversions += 1;
@@ -323,15 +465,92 @@ async function runXlsxConversion(
     }).spawn();
 
     activeProcesses.add(proc);
-    const output = await proc.output();
+
+    // Collect both stdout and stderr
+    const stdoutChunks: Uint8Array[] = [];
+    const stderrChunks: Uint8Array[] = [];
+    const decoder = new TextDecoder();
+    
+    // Stream stdout
+    const stdoutPromise = (async () => {
+      const reader = proc.stdout.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          stdoutChunks.push(value);
+        }
+      } catch {
+        // Stream closed or error, ignore
+      }
+    })();
+    
+    // Stream stderr for progress updates
+    const stderrPromise = (async () => {
+      const reader = proc.stderr.getReader();
+      let buffer = "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          // Collect chunks for later
+          stderrChunks.push(value);
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                if (data.type === "progress" && conversionId) {
+                  relayProgressToSSE(conversionId, data as ProgressEvent);
+                }
+              } catch {
+                // Not JSON progress event, ignore
+              }
+            }
+          }
+        }
+      } catch {
+        // Stream closed or error, ignore
+      }
+    })();
+
+    // Wait for process to complete and all streams to finish
+    const [status] = await Promise.all([
+      proc.status,
+      stdoutPromise,
+      stderrPromise,
+    ]);
+    
     activeProcesses.delete(proc);
 
-    if (!output.success) {
-      const message = new TextDecoder().decode(output.stderr).trim() || "XLSX conversion failed";
+    if (!status.success) {
+      // Reconstruct stderr from collected chunks
+      const totalLength = stderrChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      const stderrData = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of stderrChunks) {
+        stderrData.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const message = new TextDecoder().decode(stderrData).trim() || "XLSX conversion failed";
       throw new Error(message);
     }
 
-    const payload = JSON.parse(new TextDecoder().decode(output.stdout).trim());
+    // Reconstruct stdout from collected chunks
+    const stdoutLength = stdoutChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const stdoutData = new Uint8Array(stdoutLength);
+    let stdoutOffset = 0;
+    for (const chunk of stdoutChunks) {
+      stdoutData.set(chunk, stdoutOffset);
+      stdoutOffset += chunk.length;
+    }
+    
+    const payload = JSON.parse(new TextDecoder().decode(stdoutData).trim());
     return {
       sheetsProcessed: payload.sheetsProcessed ?? 0,
       rowsProcessed: payload.rowsProcessed ?? 0,
@@ -385,6 +604,39 @@ router.get("/health", async (ctx: Context) => {
       active: activeConversions,
     },
   };
+});
+
+router.get("/api/convert/progress/:conversionId", (ctx: Context) => {
+  const conversionId = ctx.params.conversionId;
+  
+  if (!conversionId) {
+    ctx.response.status = 400;
+    ctx.response.body = createError("INVALID_REQUEST", "Missing conversionId", {}, false);
+    return;
+  }
+
+  const stream = new ReadableStream({
+    start(controller) {
+      sseConnections.set(conversionId, {
+        conversionId,
+        controller,
+        lastActivity: Date.now(),
+      });
+      
+      // Send initial connection event
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode("event: connected\ndata: {}\n\n"));
+    },
+    cancel() {
+      sseConnections.delete(conversionId);
+    },
+  });
+  
+  ctx.response.headers.set("Content-Type", "text/event-stream");
+  ctx.response.headers.set("Cache-Control", "no-cache");
+  ctx.response.headers.set("Connection", "keep-alive");
+  ctx.response.headers.set("X-Accel-Buffering", "no"); // Disable nginx buffering
+  ctx.response.body = stream;
 });
 
 router.get("/api/downloads/:fileName", async (ctx: Context) => {
@@ -569,6 +821,7 @@ router.post("/api/convert", async (ctx: Context) => {
     }
 
     const storedName = `${crypto.randomUUID()}${extension}`;
+    const conversionId = `${batchId}-${crypto.randomUUID().slice(0, 8)}`;
 
     try {
       const inputPath = await persistUploadedFile(file, storedName);
@@ -608,6 +861,7 @@ router.post("/api/convert", async (ctx: Context) => {
           xlsxOutputPath,
           xlsxTarget,
           yamlFrontmatter,
+          conversionId,
         );
         durationMs = xlsxResult.durationMs;
         effectiveSourceType = "generic";
@@ -624,6 +878,13 @@ router.post("/api/convert", async (ctx: Context) => {
           downloadUrl: buildDownloadUrl(xlsxOutputFileName),
           durationMs,
           error: null,
+          conversionId,
+        });
+        
+        // Send completion event via SSE
+        sendSSEComplete(conversionId, {
+          outputFileName: xlsxOutputFileName,
+          downloadUrl: buildDownloadUrl(xlsxOutputFileName),
         });
         continue;
       } else if (fileTarget === "vault_md") {
@@ -632,6 +893,7 @@ router.post("/api/convert", async (ctx: Context) => {
           outputPath,
           sourceTypeValue,
           yamlFrontmatter,
+          conversionId,
         );
         durationMs = result.durationMs;
         effectiveSourceType = result.sourceType;
@@ -652,6 +914,13 @@ router.post("/api/convert", async (ctx: Context) => {
         downloadUrl: buildDownloadUrl(outputFileName),
         durationMs,
         error: null,
+        conversionId,
+      });
+      
+      // Send completion event via SSE
+      sendSSEComplete(conversionId, {
+        outputFileName,
+        downloadUrl: buildDownloadUrl(outputFileName),
       });
     } catch (error) {
       const knownError = typeof error === "object" && error !== null && "code" in error
@@ -674,7 +943,11 @@ router.post("/api/convert", async (ctx: Context) => {
         downloadUrl: null,
         durationMs: 0,
         error: knownError,
+        conversionId,
       });
+      
+      // Send error event via SSE
+      sendSSEError(conversionId, knownError);
     }
   }
 

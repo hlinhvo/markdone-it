@@ -38,6 +38,8 @@ from typing import Any
 # ── Protect stdout from library noise (same pattern as high_fidelity_pdf.py) ─
 _real_stdout_fd = os.dup(sys.stdout.fileno())
 _real_stdout = os.fdopen(_real_stdout_fd, "w")
+_real_stderr_fd = os.dup(sys.stderr.fileno())
+_real_stderr = os.fdopen(_real_stderr_fd, "w")
 sys.stdout = sys.stderr  # redirect all print() / warnings → stderr
 
 import openpyxl  # noqa: E402
@@ -61,6 +63,20 @@ def emit_json(data: dict) -> None:
     """Write exactly one JSON line to the real stdout for Deno to parse."""
     _real_stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
     _real_stdout.flush()
+
+
+def emit_progress(current: int, total: int, message: str = "") -> None:
+    """Emit progress event to stderr for Deno to capture via SSE."""
+    progress_data = {
+        "type": "progress",
+        "progress": int((current / total) * 100) if total > 0 else 0,
+        "current": current,
+        "total": total,
+        "message": message or f"Processing sheet {current}/{total}"
+    }
+    # Emit to the REAL stderr (not the redirected stdout)
+    _real_stderr.write(json.dumps(progress_data) + "\n")
+    _real_stderr.flush()
 
 
 def str_to_bool(value: str) -> bool:
@@ -146,13 +162,20 @@ def convert_to_markdown(
     """Read all sheets, emit a single Markdown file with one section per sheet."""
     wb = openpyxl.load_workbook(str(input_path), read_only=True, data_only=True)
     sheet_names = wb.sheetnames
+    total_sheets = len(sheet_names)
     wb.close()
 
     sections: list[str] = []
     sheet_types: dict[str, str] = {}
     total_rows = 0
 
-    for sheet_name in sheet_names:
+    # Emit initial progress
+    if total_sheets > 0:
+        emit_progress(0, total_sheets, "Starting conversion")
+
+    for idx, sheet_name in enumerate(sheet_names, 1):
+        # Report progress for each sheet
+        emit_progress(idx, total_sheets, f"Processing sheet: {sheet_name}")
         try:
             df = pd.read_excel(str(input_path), sheet_name=sheet_name, dtype=str)
         except Exception as exc:
@@ -206,6 +229,7 @@ def convert_to_json(
     """Read all sheets, emit a structured JSON file — most token-efficient for RAG."""
     wb = openpyxl.load_workbook(str(input_path), read_only=True, data_only=True)
     sheet_names = wb.sheetnames
+    total_sheets = len(sheet_names)
     wb.close()
 
     workbook_data: dict[str, Any] = {
@@ -218,7 +242,13 @@ def convert_to_json(
     sheet_types: dict[str, str] = {}
     total_rows = 0
 
-    for sheet_name in sheet_names:
+    # Emit initial progress
+    if total_sheets > 0:
+        emit_progress(0, total_sheets, "Starting conversion")
+
+    for idx, sheet_name in enumerate(sheet_names, 1):
+        # Report progress for each sheet
+        emit_progress(idx, total_sheets, f"Processing sheet: {sheet_name}")
         try:
             df = pd.read_excel(str(input_path), sheet_name=sheet_name, dtype=str)
         except Exception as exc:

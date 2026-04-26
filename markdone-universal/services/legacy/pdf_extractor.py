@@ -21,13 +21,14 @@ class PDFExtractor:
         """Initialize the PDF extractor."""
         self.image_counter = 0
     
-    def extract(self, pdf_path: Path, source_type: str) -> Dict[str, Any]:
+    def extract(self, pdf_path: Path, source_type: str, progress_callback=None) -> Dict[str, Any]:
         """
         Extract content from PDF file using PyMuPDF (fitz).
         
         Args:
             pdf_path: Path to PDF file
             source_type: Type of source ('ppt' or 'word')
+            progress_callback: Optional callback function(current, total) for progress updates
             
         Returns:
             Dictionary containing extracted content
@@ -37,9 +38,9 @@ class PDFExtractor:
             doc = fitz.open(str(pdf_path))
             
             if source_type == "ppt":
-                result = self._extract_powerpoint(doc, pdf_path)
+                result = self._extract_powerpoint(doc, pdf_path, progress_callback)
             else:
-                result = self._extract_word(doc, pdf_path)
+                result = self._extract_word(doc, pdf_path, progress_callback)
             
             doc.close()
             return result
@@ -48,13 +49,14 @@ class PDFExtractor:
             logger.error(f"Error extracting from {pdf_path}: {e}")
             return {}
     
-    def _extract_powerpoint(self, doc: fitz.Document, pdf_path: Path) -> Dict[str, Any]:
+    def _extract_powerpoint(self, doc: fitz.Document, pdf_path: Path, progress_callback=None) -> Dict[str, Any]:
         """
         Extract content from PowerPoint-originated PDF.
         
         Args:
             doc: PyMuPDF Document object
             pdf_path: Path to PDF file
+            progress_callback: Optional callback function(current, total) for progress updates
             
         Returns:
             Dictionary with slides and notes
@@ -62,9 +64,14 @@ class PDFExtractor:
         logger.debug("Extracting PowerPoint content")
         
         slides = []
+        total_pages = len(doc)
         
-        for page_num in range(len(doc)):
+        for page_num in range(total_pages):
             page = doc.load_page(page_num)
+            
+            # Report progress
+            if progress_callback:
+                progress_callback(page_num + 1, total_pages)
             
             slide_data = {
                 'number': page_num + 1,
@@ -147,13 +154,14 @@ class PDFExtractor:
             'metadata': metadata
         }
     
-    def _extract_word(self, doc: fitz.Document, pdf_path: Path) -> Dict[str, Any]:
+    def _extract_word(self, doc: fitz.Document, pdf_path: Path, progress_callback=None) -> Dict[str, Any]:
         """
         Extract content from Word-originated PDF.
         
         Args:
             doc: PyMuPDF Document object
             pdf_path: Path to PDF file
+            progress_callback: Optional callback function(current, total) for progress updates
             
         Returns:
             Dictionary with document content
@@ -161,9 +169,14 @@ class PDFExtractor:
         logger.debug("Extracting Word document content")
         
         pages = []
+        total_pages = len(doc)
         
-        for page_num in range(len(doc)):
+        for page_num in range(total_pages):
             page = doc.load_page(page_num)
+            
+            # Report progress
+            if progress_callback:
+                progress_callback(page_num + 1, total_pages)
             
             page_data = {
                 'number': page_num + 1,

@@ -68,6 +68,20 @@ function renderQueueTable() {
 
     const statusTd = document.createElement("td");
     statusTd.innerHTML = `<span class="status-pill status-${item.status}">${item.status}</span>`;
+    
+    // Show progress bar if converting
+    if (item.status === "converting" && item.progress !== undefined) {
+      const progressDiv = document.createElement("div");
+      progressDiv.className = "progress-container";
+      progressDiv.innerHTML = `
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${item.progress}%">${item.progress > 10 ? item.progress + '%' : ''}</div>
+        </div>
+        <div class="progress-text">${item.current}/${item.total} ${item.progress}%</div>
+      `;
+      statusTd.appendChild(progressDiv);
+    }
+    
     if (item.error) {
       const errDiv = document.createElement("div");
       errDiv.className = "small";
@@ -123,6 +137,11 @@ function createQueueItem(file) {
     outputName: "",
     downloadUrl: "",
     error: "",
+    conversionId: null,
+    progress: 0,
+    current: 0,
+    total: 0,
+    eventSource: null,
   };
 }
 
@@ -182,6 +201,58 @@ async function refreshHealth() {
   updateDOM();
 }
 
+function connectToProgress(conversionId, itemId) {
+  const eventSource = new EventSource(`/api/convert/progress/${conversionId}`);
+  
+  eventSource.addEventListener("connected", () => {
+    console.log(`SSE connected for ${conversionId}`);
+  });
+  
+  eventSource.addEventListener("progress", (event) => {
+    const data = JSON.parse(event.data);
+    const item = queue.find(i => i.id === itemId);
+    if (item) {
+      item.progress = data.progress || 0;
+      item.current = data.current || 0;
+      item.total = data.total || 0;
+      updateDOM();
+    }
+  });
+  
+  eventSource.addEventListener("complete", (event) => {
+    const data = JSON.parse(event.data);
+    const item = queue.find(i => i.id === itemId);
+    if (item) {
+      item.status = "completed";
+      item.downloadUrl = data.downloadUrl || "";
+      item.outputName = data.outputFileName || "";
+    }
+    eventSource.close();
+    updateDOM();
+  });
+  
+  eventSource.addEventListener("error", (event) => {
+    const item = queue.find(i => i.id === itemId);
+    if (item && event.data) {
+      try {
+        const errorData = JSON.parse(event.data);
+        item.status = "failed";
+        item.error = errorData.message || "Conversion failed";
+      } catch {
+        // Ignore parse errors
+      }
+    }
+    eventSource.close();
+    updateDOM();
+  });
+  
+  eventSource.onerror = () => {
+    eventSource.close();
+  };
+  
+  return eventSource;
+}
+
 async function convertAll() {
   if (queue.length === 0) {
     feedback = "Add at least one PDF before converting.";
@@ -238,6 +309,12 @@ async function convertAll() {
         };
       }
 
+      // Establish SSE connection for this file if it has a conversionId
+      if (result.conversionId && result.status === "converting") {
+        item.eventSource = connectToProgress(result.conversionId, item.id);
+        item.conversionId = result.conversionId;
+      }
+
       return {
         ...item,
         sourceType: result.sourceType,
@@ -246,6 +323,7 @@ async function convertAll() {
         outputName: result.outputFileName ?? "",
         downloadUrl: result.downloadUrl ?? "",
         error: result.error?.message ?? "",
+        conversionId: result.conversionId,
       };
     });
 

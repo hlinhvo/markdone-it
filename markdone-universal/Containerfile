@@ -69,4 +69,4 @@ RUN deno cache server.ts
 
 EXPOSE 7482
 
-CMD ["deno", "run", "--allow-all", "server.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=python3,pandoc", "server.ts"]

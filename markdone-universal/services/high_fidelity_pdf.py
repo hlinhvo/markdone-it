@@ -23,6 +23,8 @@ from pathlib import Path
 # the real stdout.
 _real_stdout_fd = os.dup(sys.stdout.fileno())   # keep the real fd
 _real_stdout = os.fdopen(_real_stdout_fd, "w")   # wrap it in a file object
+_real_stderr_fd = os.dup(sys.stderr.fileno())   # keep the real stderr fd
+_real_stderr = os.fdopen(_real_stderr_fd, "w")   # wrap it in a file object
 sys.stdout = sys.stderr                          # everything else → stderr
 
 LEGACY_SRC = Path(__file__).resolve().parent / "legacy"
@@ -40,6 +42,20 @@ def emit_json(data: dict) -> None:
     """Write JSON to the *real* stdout so Deno can parse it."""
     _real_stdout.write(json.dumps(data) + "\n")
     _real_stdout.flush()
+
+
+def emit_progress(current: int, total: int, message: str = "") -> None:
+    """Emit progress event to stderr for Deno to capture via SSE."""
+    progress_data = {
+        "type": "progress",
+        "progress": int((current / total) * 100) if total > 0 else 0,
+        "current": current,
+        "total": total,
+        "message": message or f"Processing page {current}/{total}"
+    }
+    # Emit to the REAL stderr (not the redirected stdout)
+    _real_stderr.write(json.dumps(progress_data) + "\n")
+    _real_stderr.flush()
 
 
 def str_to_bool(value: str) -> bool:
@@ -85,6 +101,15 @@ def detect_source_type(input_path: Path) -> str:
 def build_markdown(input_path: Path, output_path: Path, source_type: str, yaml_frontmatter: bool) -> dict:
     effective_source_type = detect_source_type(input_path) if source_type == "auto" else source_type
 
+    # Get total pages first for progress reporting
+    import fitz
+    try:
+        doc = fitz.open(str(input_path))
+        total_pages = len(doc)
+        doc.close()
+    except Exception:
+        total_pages = 0
+
     extractor = PDFExtractor()
     cleaner = ContentCleaner()
     formatter = MarkdownFormatter()
@@ -97,9 +122,17 @@ def build_markdown(input_path: Path, output_path: Path, source_type: str, yaml_f
         verbose=False,
     )
 
-    extracted_data = extractor.extract(input_path, effective_source_type)
+    # Emit initial progress
+    if total_pages > 0:
+        emit_progress(0, total_pages, "Starting extraction")
+
+    extracted_data = extractor.extract(input_path, effective_source_type, progress_callback=lambda current, total: emit_progress(current, total))
     if not extracted_data:
         raise RuntimeError("Failed to extract content from PDF")
+
+    # Emit progress for cleaning phase
+    if total_pages > 0:
+        emit_progress(total_pages, total_pages, "Cleaning content")
 
     cleaned_data = cleaner.clean(extracted_data, effective_source_type)
     markdown = formatter.format(

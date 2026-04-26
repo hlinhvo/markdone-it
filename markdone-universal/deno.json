@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "dev": "deno run --watch --allow-all server.ts",
-    "start": "deno run --allow-all server.ts",
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env --allow-run=python3,pandoc server.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-run=python3,pandoc server.ts",
     "test:integration": "deno run --allow-net --allow-read --allow-env tests/integration.ts"
   },
   "imports": {

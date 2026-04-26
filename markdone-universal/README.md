@@ -9,13 +9,16 @@ MarkDone Universal is a local-first document conversion tool designed for single
 
 ## Features
 
-- High-fidelity PDF to Markdown conversion
-- Batch staging queue with drag-and-drop
-- YAML frontmatter toggle for Markdown output
-- Local-only deployment and processing
-- Podman Kube Play deployment
-- Upload cleanup and graceful shutdown behavior
-- Optional direct downloads for all targets
+- **High-fidelity PDF to Markdown conversion** with intelligent source detection
+- **Real-time progress tracking** via Server-Sent Events (SSE) for large file conversions
+- **Batch staging queue** with drag-and-drop support
+- **YAML frontmatter toggle** for Markdown output
+- **Excel/XLSX support** with structured JSON or Markdown table output
+- **Local-only deployment** and processing (no data leaves your machine)
+- **Podman Kube Play deployment** with resource limits
+- **Secure permissions model** - minimal Deno permissions (no `--allow-all`)
+- **Upload cleanup** and graceful shutdown behavior
+- **Direct downloads** for all conversion targets
 
 ## Project Layout
 
@@ -113,10 +116,31 @@ Returns:
 ### [`POST /api/convert`](server.ts)
 `multipart/form-data` fields:
 
-- `target`: `vault_md|html|docx|pdf`
+- `target`: `vault_md|vault_json|html|docx|pdf`
 - `sourceType`: `auto|ppt|word|generic`
 - `yamlFrontmatter`: `true|false`
-- `files`: one or more PDF files
+- `files`: one or more PDF, Markdown, or Excel files
+- `targetMap`: (optional) JSON object mapping filenames to specific targets
+
+Returns conversion results with `conversionId` for each file.
+
+### [`GET /api/convert/progress/:conversionId`](server.ts)
+**New in v1.1**: Server-Sent Events endpoint for real-time progress updates.
+
+Events:
+- `connected`: Initial connection established
+- `progress`: Progress update with `{progress, current, total, message}`
+- `complete`: Conversion completed with `{outputFileName, downloadUrl}`
+- `error`: Conversion failed with error details
+
+### [`GET /api/downloads/:fileName`](server.ts)
+Download converted files.
+
+### [`GET /api/outputs`](server.ts)
+List all converted output files with metadata.
+
+### [`DELETE /api/outputs`](server.ts)
+Clear all output files from the vault.
 
 ## Frontend Workflow
 
@@ -156,12 +180,49 @@ On `SIGINT` or `SIGTERM`, the server:
 - clears the cleanup timer
 - terminates active child conversion processes
 
+## Security
+
+### Deno Permissions
+MarkDone Universal follows the **principle of least privilege**:
+
+```bash
+--allow-net          # HTTP server only
+--allow-read         # Read uploads, services, static files
+--allow-write        # Write to uploads and outputs directories
+--allow-env          # Read configuration from environment variables
+--allow-run=python3,pandoc  # Execute only specific commands
+```
+
+**No `--allow-all`** - the application requests only the minimum permissions required.
+
+### Data Privacy
+- All processing happens locally on your machine
+- No data is sent to external services
+- Files are automatically cleaned up after 10 minutes
+- Vault directory is mounted read-write for output only
+
+## Progress Tracking
+
+For large files (50+ pages), MarkDone provides real-time progress updates:
+
+1. **Backend**: Python scripts emit progress events to stderr
+2. **Server**: Deno captures events and relays via SSE
+3. **Frontend**: Progress bar updates in real-time showing:
+   - Percentage complete (0-100%)
+   - Current page / Total pages
+   - Visual progress bar with gradient
+
+Progress tracking works for:
+- PDF conversions (per-page progress)
+- Excel conversions (per-sheet progress)
+
 ## Known Limitations
 
 - Version 1 is single-user and local-only
 - Public exposure is unsupported
 - Pandoc support for some PDF conversion routes may be limited by upstream behavior
 - The editor may require Deno support enabled for best TypeScript diagnostics
+- SSE connections timeout after 5 minutes of inactivity
 
 ## Troubleshooting
 
