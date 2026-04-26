@@ -1,271 +1,301 @@
-# MarkDone Universal
+# MarkDone-IT v2
 
-MarkDone Universal is a local-first document conversion tool designed for single-user production use on a MacBook Pro 16. It combines:
+A local-first, production-ready document conversion tool that converts PDFs, Markdown, and Excel workbooks into AI-ready formats — optimised for use with Claude Projects, NotebookLM, and direct Anthropic API RAG workflows.
 
-- a Deno 2.x orchestration API
-- a Python high-fidelity PDF-to-Markdown sidecar
-- a zero-build frontend using Preact, HTM, and Pico CSS
-- Podman deployment with a local vault directory mount
+Built with a Deno 2.x orchestration API, a Python conversion sidecar, a zero-build Preact frontend, and Podman deployment for MacBook Pro 16.
+
+---
+
+## Why MarkDone-IT
+
+Large PDF and XLSX files consume significant tokens when uploaded directly to AI tools. MarkDone-IT converts them to lightweight Markdown or structured JSON first — reducing token consumption by 60–80% and making document-heavy workflows substantially faster and cheaper.
+
+---
 
 ## Features
 
-- **High-fidelity PDF to Markdown conversion** with intelligent source detection
-- **Real-time progress tracking** via Server-Sent Events (SSE) for large file conversions
-- **Bulk download as ZIP** - download multiple converted files in a single archive
-- **Smart download behavior** - single files download directly, 2+ files download as ZIP
-- **Batch staging queue** with drag-and-drop support
-- **YAML frontmatter toggle** for Markdown output
-- **Excel/XLSX support** with structured JSON or Markdown table output
-- **Local-only deployment** and processing (no data leaves your machine)
-- **Podman Kube Play deployment** with resource limits
-- **Secure permissions model** - minimal Deno permissions (no `--allow-all`)
-- **Upload cleanup** and graceful shutdown behavior
-- **Direct downloads** for all conversion targets
-- **User-friendly UI** with clear terminology and responsive table layouts
+### v2.2 (Current)
+- **Bulk download as ZIP** — download multiple converted files in a single archive
+- **Smart download behavior** — single files download directly, 2+ files download as ZIP with timestamps
+- **User-friendly UI** — clear terminology ("Completed Files" instead of technical jargon)
+- **Responsive table layouts** — long filenames handled gracefully without breaking layout
+
+### v2.1 (Retained)
+- XLSX and XLSM to Markdown table conversion (`vault_md`)
+- XLSX and XLSM to structured JSON conversion (`vault_json`) — most token-efficient format for RAG
+- Auto-detection of compliance matrix sheets (RFP/RFI workflows)
+- YAML frontmatter with `lang: en` tag on all Markdown outputs
+- **Real-time progress tracking** via Server-Sent Events for large file conversions
+
+### v1 (Retained)
+- High-fidelity PDF to Markdown conversion (printed PDFs with selectable text)
+- PDF, Markdown to HTML, DOCX, and PDF output via Pandoc
+- Batch staging queue with drag-and-drop
+- YAML frontmatter toggle for Markdown output
+- Source type detection: `auto`, `ppt`, `word`, `generic`
+- Local-only deployment and processing
+- Upload cleanup and graceful shutdown behaviour
+
+---
 
 ## Project Layout
 
-```text
-markdone-universal/
-├── Containerfile
-├── deno.json
-├── deploy.sh
-├── podman-kube.yaml
-├── README.md
-├── server.ts
-├── services/
-│   └── high_fidelity_pdf.py
-├── static/
-│   ├── app.js
-│   └── index.html
-├── tests/
-├── uploads/
-└── outputs/
 ```
+markdone-it/
+├── Containerfile               # Multi-stage container image (Deno + Python 3.11)
+├── deno.json                   # Deno task configuration
+├── deploy.sh                   # Podman build and deploy script
+├── setup.sh                    # Prerequisites check and directory setup
+├── podman-kube.yaml            # Podman Kube Play manifest (sleep/burst resource profiles)
+├── server.ts                   # Deno 2.x orchestration API (Oak framework)
+├── tsconfig.json               # TypeScript configuration
+├── services/
+│   ├── high_fidelity_pdf.py   # PDF → Markdown sidecar (PyMuPDF)
+│   ├── xlsx_converter.py      # XLSX/XLSM → Markdown / JSON sidecar (pandas + openpyxl)
+│   └── legacy/                # Legacy extraction and formatting modules
+├── static/
+│   ├── index.html             # Single-page UI shell
+│   └── app.js                 # Preact + HTM frontend (zero-build)
+└── tests/                      # Test suite
+```
+
+---
 
 ## Prerequisites
 
-- macOS on your MacBook Pro 16
+- macOS (MacBook Pro 16 recommended)
 - Podman Desktop 1.26+
 - Deno 2.x
-- A local output directory at `../outputs` (to be created by `setup.sh`)
+
+---
 
 ## Setup
 
 ```bash
-cd ./markdone-universal
 chmod +x ./setup.sh ./deploy.sh
 ./setup.sh
 ```
 
-The setup script checks:
+The setup script verifies Podman availability, Deno availability, and creates the local output vault directory.
 
-- Podman availability
-- Deno availability
-- Output vault directory existence
+---
 
-## Run in Development
+## Development
 
 ```bash
-cd ./markdone-universal
 deno task dev
 ```
-
-The app starts on:
 
 - UI: `http://127.0.0.1:7482`
 - Health: `http://127.0.0.1:7482/health`
 
-## Deploy with Podman
+---
+
+## Production Deployment
 
 ```bash
-cd ./markdone-universal
 ./deploy.sh
 ```
 
-This will:
+This builds `localhost/markdone-universal:latest`, tears down any existing pod, and runs `podman kube play` with `podman-kube.yaml`.
 
-- build the image `localhost/markdone-universal:latest`
-- replace any existing `markdone-universal` pod
-- run [`podman kube play`](deploy.sh) with [`podman-kube.yaml`](podman-kube.yaml)
+- UI and API: `http://localhost:7482`
+- Health: `http://localhost:7482/health`
+
+---
 
 ## Resource Profiles
 
-### Sleep Mode
-Configured via resource requests in [`podman-kube.yaml`](podman-kube.yaml):
+Configured in `podman-kube.yaml`:
 
-- CPU: `50m`
-- Memory: `128Mi`
+| Mode | CPU | Memory |
+|---|---|---|
+| Sleep (requests) | `50m` | `128Mi` |
+| Burst (limits) | `4` | `2Gi` |
 
-### Burst Mode
-Configured via resource limits in [`podman-kube.yaml`](podman-kube.yaml):
+Default conversion concurrency: `4` (tunable via `MAX_CONCURRENT_CONVERSIONS` env var).
 
-- CPU: `4`
-- Memory: `2Gi`
-
-### Concurrency
-Default conversion concurrency is `4`, tuned for a single-user local workflow. It can be increased to `6` after validating stability on your machine.
+---
 
 ## API
 
-### [`GET /health`](server.ts)
-Returns:
+### `GET /health`
 
-- service health
-- dependency availability for `pandoc` and `python3`
-- uptime
-- active versus configured concurrency
+Returns service status, dependency availability (`pandoc`, `python3`), uptime, supported inputs and targets, and active concurrency.
 
-### [`POST /api/convert`](server.ts)
-`multipart/form-data` fields:
-
-- `target`: `vault_md|vault_json|html|docx|pdf`
-- `sourceType`: `auto|ppt|word|generic`
-- `yamlFrontmatter`: `true|false`
-- `files`: one or more PDF, Markdown, or Excel files
-- `targetMap`: (optional) JSON object mapping filenames to specific targets
-
-Returns conversion results with `conversionId` for each file.
-
-### [`GET /api/convert/progress/:conversionId`](server.ts)
-**New in v1.1**: Server-Sent Events endpoint for real-time progress updates.
-
-Events:
-- `connected`: Initial connection established
-- `progress`: Progress update with `{progress, current, total, message}`
-- `complete`: Conversion completed with `{outputFileName, downloadUrl}`
-- `error`: Conversion failed with error details
-
-### [`GET /api/downloads/:fileName`](server.ts)
-Download converted files.
-
-### [`POST /api/download-queue-zip`](server.ts)
-**New in v2.2**: Download multiple files from the processing queue as a ZIP archive.
-
-Request body:
 ```json
 {
-  "files": [
-    {"path": "relative/path/to/file1.md"},
-    {"path": "relative/path/to/file2.md"}
-  ]
+  "status": "ok",
+  "dependencies": { "pandoc": true, "python3": true },
+  "supportedInputs": ["pdf", "md", "xlsx", "xlsm"],
+  "supportedTargets": ["vault_md", "vault_json", "docx", "html", "pdf"]
 }
 ```
 
-Returns a ZIP file with timestamped filename (e.g., `markdone-queue-2026-04-26-15-30-45.zip`).
+### `POST /api/convert`
 
-### [`GET /api/download-history-zip`](server.ts)
-**New in v2.2**: Download all completed files from the history as a ZIP archive.
+`multipart/form-data` fields:
 
-Returns a ZIP file with timestamped filename (e.g., `markdone-history-2026-04-26-15-30-45.zip`).
+| Field | Values | Notes |
+|---|---|---|
+| `files` | one or more files | PDF, Markdown, XLSX, XLSM |
+| `target` | `vault_md` \| `vault_json` \| `html` \| `docx` \| `pdf` | `vault_json` applies to XLSX/XLSM only |
+| `sourceType` | `auto` \| `ppt` \| `word` \| `generic` | PDF only, ignored for XLSX |
+| `yamlFrontmatter` | `true` \| `false` | Markdown output only |
 
-### [`GET /api/outputs`](server.ts)
-List all converted output files with metadata.
+#### Example — XLSX via curl (bypassing the UI)
 
-### [`DELETE /api/outputs`](server.ts)
-Clear all output files from the vault.
+```bash
+curl -X POST http://localhost:7482/api/convert \
+  -F "files=@compliance_matrix.xlsx" \
+  -F "target=vault_md" \
+  -F "yamlFrontmatter=true"
+```
+
+#### Example — XLSX to JSON for direct RAG use
+
+```bash
+curl -X POST http://localhost:7482/api/convert \
+  -F "files=@rfp_requirements.xlsx" \
+  -F "target=vault_json"
+```
+
+### `GET /api/downloads/:fileName`
+
+Download a converted output file by name.
+
+### `POST /api/download-queue-zip`
+
+**New in v2.2**: Download multiple files from the processing queue as a ZIP archive with timestamped filename.
+
+### `GET /api/download-history-zip`
+
+**New in v2.2**: Download all completed files from history as a ZIP archive with timestamped filename.
+
+### `GET /api/outputs`
+
+List all output files with download URLs, sizes, and modification timestamps.
+
+### `DELETE /api/outputs`
+
+Clear all output files.
+
+---
 
 ## Frontend Workflow
 
-1. Add one or more PDFs using drag-and-drop or the file picker.
+1. Add files using drag-and-drop or the file picker (PDF, MD, XLSX, XLSM supported).
 2. Review the staging queue.
-3. Remove any files you do not want.
-4. Select target and source type.
-5. Use frontmatter and high-fidelity options for Markdown output.
+3. Remove any files you do not want to convert.
+4. Select target format and source type.
+5. Toggle YAML frontmatter for Markdown output.
 6. Click **Convert All**.
 7. Download files individually or use **Download All** to get multiple files as a ZIP archive.
 8. View completed files in the **Completed Files** section with download history.
 
-## Output Behavior
+---
 
-- Markdown files are written to the mounted vault path at `/app/outputs/vault`
-- Other targets are written under `/app/outputs`
-- All outputs may be downloaded via `/api/downloads/:fileName`
+## Output Behaviour
+
+| Target | Output path | Notes |
+|---|---|---|
+| `vault_md` | `/app/outputs/vault/` | Markdown with optional YAML frontmatter |
+| `vault_json` | `/app/outputs/vault/` | Structured JSON, XLSX/XLSM only |
+| `html` | `/app/outputs/` | Via Pandoc |
+| `docx` | `/app/outputs/` | Via Pandoc |
+| `pdf` | `/app/outputs/` | Via Pandoc + WeasyPrint |
+
+The vault directory is bind-mounted from the host — files written there persist across pod restarts.
+
+---
+
+## XLSX Conversion Detail
+
+`xlsx_converter.py` follows the same CLI contract as `high_fidelity_pdf.py`:
+
+- Reads all sheets in the workbook
+- Skips chart-only, empty, or protected sheets gracefully
+- Auto-detects compliance matrix sheets (column headers matching keywords: `requirement`, `compliance`, `response`, `status`, `vendor`, `criteria`, etc.)
+- Compliance sheets are flagged in YAML frontmatter and JSON output for downstream filtering
+- Caps rows at 2,000 per sheet and cells at 500 characters to prevent runaway output
+- `vault_md`: one `## Sheet Name` section per sheet with a full Markdown table
+- `vault_json`: structured JSON with column list, row count, sheet type, and all rows as records
+
+---
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Orchestration API | Deno 2.x + Oak framework |
+| PDF conversion | Python 3.11 + PyMuPDF (sidecar) |
+| XLSX conversion | Python 3.11 + pandas + openpyxl (sidecar) |
+| Format conversion | Pandoc + WeasyPrint |
+| Frontend | Preact + HTM (zero-build, no bundler) |
+| Styling | Pico CSS |
+| Deployment | Podman Kube Play |
+| Container base | `python:3.11-slim` + Deno binary copy |
+
+---
 
 ## Logging and Health
 
-The backend logs:
+The backend logs startup, conversion success and failure, dependency availability, and cleanup lifecycle events. All Python sidecar output goes to stderr — only the JSON result payload reaches stdout for Deno to parse.
 
-- startup
-- conversion success and failure
-- dependency availability
-- cleanup lifecycle events
+---
 
-Health response includes active concurrency and dependency status.
+## Cleanup Behaviour
 
-## Cleanup Behavior
+Uploads older than 10 minutes are purged automatically on a rolling timer.
 
-Uploads in [`uploads/`](uploads/) older than 10 minutes are purged automatically.
+---
 
 ## Graceful Shutdown
 
-On `SIGINT` or `SIGTERM`, the server:
+On `SIGINT` or `SIGTERM`, the server stops accepting new work, clears the cleanup timer, and terminates all active child conversion processes.
 
-- stops accepting new work
-- clears the cleanup timer
-- terminates active child conversion processes
-
-## Security
-
-### Deno Permissions
-MarkDone Universal follows the **principle of least privilege**:
-
-```bash
---allow-net          # HTTP server only
---allow-read         # Read uploads, services, static files
---allow-write        # Write to uploads and outputs directories
---allow-env          # Read configuration from environment variables
---allow-run=python3,pandoc  # Execute only specific commands
-```
-
-**No `--allow-all`** - the application requests only the minimum permissions required.
-
-### Data Privacy
-- All processing happens locally on your machine
-- No data is sent to external services
-- Files are automatically cleaned up after 10 minutes
-- Vault directory is mounted read-write for output only
-
-## Progress Tracking
-
-For large files (50+ pages), MarkDone provides real-time progress updates:
-
-1. **Backend**: Python scripts emit progress events to stderr
-2. **Server**: Deno captures events and relays via SSE
-3. **Frontend**: Progress bar updates in real-time showing:
-   - Percentage complete (0-100%)
-   - Current page / Total pages
-   - Visual progress bar with gradient
-
-Progress tracking works for:
-- PDF conversions (per-page progress)
-- Excel conversions (per-sheet progress)
+---
 
 ## Known Limitations
 
-- Version 1 is single-user and local-only
-- Public exposure is unsupported
-- Pandoc support for some PDF conversion routes may be limited by upstream behavior
-- The editor may require Deno support enabled for best TypeScript diagnostics
-- SSE connections timeout after 5 minutes of inactivity
+- Single-user, local-only — not designed for public exposure
+- PDF conversion requires printed PDFs with selectable text (scanned PDFs are not supported in v2)
+- XLSX conversion is English-language only in v2
+- Pandoc PDF output requires WeasyPrint; LaTeX is not used
+
+---
+
+## Roadmap
+
+| Version | Planned |
+|---|---|
+| v2 ✅ | XLSX/XLSM support, `vault_json` target, compliance matrix detection |
+| v3 | Scanned PDF via Claude Vision API (English first), Vietnamese language support |
+
+---
 
 ## Troubleshooting
 
-### Podman pod does not start
+**Pod does not start**
 ```bash
 podman pod ps
 podman logs -f markdone-api
 ```
 
-### Health endpoint is degraded
-Check whether `pandoc` and `python3` are available inside the container or local environment.
+**Health endpoint is degraded**
+Check that `pandoc` and `python3` are available inside the container.
 
-### Output is not appearing in local folder
-Verify the host path in your deployment manifest matches your actual output directory.
+**XLSX file not selectable in UI**
+Ensure the file picker `accept` attribute includes `.xlsx,.xlsm` and that both MIME types are listed in the frontend validation.
 
-### Deno types show unresolved in VS Code
-Open the [`markdone-universal/`](.) folder directly or ensure the Deno extension is enabled for the workspace.
+**Output not appearing in local folder**
+Verify the host path in `podman-kube.yaml` matches your actual output directory.
 
-## Implementation Baseline
+**Deno types unresolved in VS Code**
+Open the repo root directly and ensure the Deno VS Code extension is enabled for the workspace.
 
-This project was implemented from [`markdone-production-spec.md`](../docs/markdone-production-spec.md).
+---
+
+## License
+
+Internal use only.
