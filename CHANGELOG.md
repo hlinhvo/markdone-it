@@ -10,28 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.0] - 2026-04-26
 
 ### Added
-- **Bulk Download Feature**: Download multiple converted files as a single ZIP archive
-  - Smart download behavior: Single files download directly, 2+ files download as ZIP
-  - "📦 Download All" button in Processing Queue section for completed conversions
-  - "📦 Download All" button in Completed Files section for historical downloads
-  - Timestamped ZIP filenames (e.g., `markdone-queue-2026-04-26-15-30-45.zip`)
-  - Backend ZIP creation utility using system `zip` command with temporary staging
-  - Two new API endpoints: `POST /api/download-queue-zip` and `GET /api/download-history-zip`
-  - Dynamic button text based on file count (e.g., "Download 1 File" vs "Download 3 Files as ZIP")
+- **Bulk ZIP Download for Multiple Converted Files**
+  - Root cause of friction: Batch conversions (5-10 files) required individual downloads, creating repetitive manual work
+  - Solution: Server-side ZIP bundling with system `zip` command and temporary staging directories
+  - Smart download threshold: 1 file = direct download, 2+ files = timestamped ZIP archive
+  - Implementation: Two new endpoints (`POST /api/download-queue-zip`, `GET /api/download-history-zip`)
+  - User experience: Dynamic button text based on file count (e.g., "Download 1 File" vs "Download 3 Files as ZIP")
+  - ZIP naming: ISO 8601 timestamps for traceability (e.g., `markdone-queue-2026-04-26-15-30-45.zip`)
 
 ### Changed
-- **UI Terminology Improvements**: Replaced technical jargon with user-friendly terms
-  - "Secure Artifacts Vault" → "Completed Files" (with 📁 icon)
-  - "Purge Artifacts" → "Delete All Files" (with 🗑 icon)
-  - Updated section descriptions for better clarity
-- **Table Layout Fixes**: Improved handling of long filenames in Processing Queue
-  - Added CSS `text-overflow: ellipsis` for Name column
-  - Added `word-break: break-word` for Output column
-  - Set `max-width` constraints to prevent table overflow
+- **UI Terminology: Technical Jargon → User-Friendly Language**
+  - Root cause: "Secure Artifacts Vault" terminology is Obsidian-specific, confusing for non-Obsidian users
+  - Solution: Renamed to "Completed Files" (📁 icon) for universal clarity
+  - Root cause: "Purge Artifacts" sounds destructive and technical
+  - Solution: Renamed to "Delete All Files" (🗑 icon) with clear intent
+  - Impact: Improved accessibility for users unfamiliar with vault/artifact terminology
 
 ### Fixed
-- Long filenames no longer break the Processing Queue table layout
-- Table columns now properly constrain and wrap content
+- **Long Filenames Breaking Processing Queue Table Layout**
+  - Root cause: No CSS constraints on filename length caused horizontal overflow and broken table structure
+  - Solution: Applied `text-overflow: ellipsis` to Name column, `word-break: break-word` to Output column
+  - Technical implementation: Set `max-width` constraints (Name: 200px, Output: 300px) with responsive behavior
+  - Result: Table maintains structure regardless of filename length, with tooltips showing full names on hover
 
 ### Technical Details
 
