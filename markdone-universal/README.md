@@ -11,6 +11,8 @@ MarkDone Universal is a local-first document conversion tool designed for single
 
 - **High-fidelity PDF to Markdown conversion** with intelligent source detection
 - **Real-time progress tracking** via Server-Sent Events (SSE) for large file conversions
+- **Bulk download as ZIP** - download multiple converted files in a single archive
+- **Smart download behavior** - single files download directly, 2+ files download as ZIP
 - **Batch staging queue** with drag-and-drop support
 - **YAML frontmatter toggle** for Markdown output
 - **Excel/XLSX support** with structured JSON or Markdown table output
@@ -19,6 +21,7 @@ MarkDone Universal is a local-first document conversion tool designed for single
 - **Secure permissions model** - minimal Deno permissions (no `--allow-all`)
 - **Upload cleanup** and graceful shutdown behavior
 - **Direct downloads** for all conversion targets
+- **User-friendly UI** with clear terminology and responsive table layouts
 
 ## Project Layout
 
@@ -136,6 +139,26 @@ Events:
 ### [`GET /api/downloads/:fileName`](server.ts)
 Download converted files.
 
+### [`POST /api/download-queue-zip`](server.ts)
+**New in v2.2**: Download multiple files from the processing queue as a ZIP archive.
+
+Request body:
+```json
+{
+  "files": [
+    {"path": "relative/path/to/file1.md"},
+    {"path": "relative/path/to/file2.md"}
+  ]
+}
+```
+
+Returns a ZIP file with timestamped filename (e.g., `markdone-queue-2026-04-26-15-30-45.zip`).
+
+### [`GET /api/download-history-zip`](server.ts)
+**New in v2.2**: Download all completed files from the history as a ZIP archive.
+
+Returns a ZIP file with timestamped filename (e.g., `markdone-history-2026-04-26-15-30-45.zip`).
+
 ### [`GET /api/outputs`](server.ts)
 List all converted output files with metadata.
 
@@ -150,6 +173,8 @@ Clear all output files from the vault.
 4. Select target and source type.
 5. Use frontmatter and high-fidelity options for Markdown output.
 6. Click **Convert All**.
+7. Download files individually or use **Download All** to get multiple files as a ZIP archive.
+8. View completed files in the **Completed Files** section with download history.
 
 ## Output Behavior
 
