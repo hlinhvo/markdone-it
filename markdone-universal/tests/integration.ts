@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+
 export {};
 
 async function main() {
