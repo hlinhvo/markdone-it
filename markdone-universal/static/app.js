@@ -19,6 +19,7 @@ function updateDOM() {
   document.getElementById("metric-concurrency").textContent = health.concurrency;
   document.getElementById("feedback").textContent = feedback;
   renderQueueTable();
+  updateDownloadButtons();
 }
 
 function renderQueueTable() {
@@ -419,7 +420,12 @@ function wireDom() {
   });
   clearButton.addEventListener("click", clearQueue);
 
+  const downloadQueueZipButton = document.getElementById("download-queue-zip-button");
+  const downloadHistoryZipButton = document.getElementById("download-history-zip-button");
   const clearHistoryButton = document.getElementById("clear-history-button");
+  
+  downloadQueueZipButton.addEventListener("click", downloadQueueFiles);
+  downloadHistoryZipButton.addEventListener("click", downloadHistoryFiles);
   clearHistoryButton.addEventListener("click", clearHistory);
 
   refreshHealth();
@@ -441,8 +447,133 @@ async function clearHistory() {
   loadOutputFiles();
 }
 
+function updateDownloadButtons() {
+  // Update queue download button
+  const queueZipBtn = document.getElementById("download-queue-zip-button");
+  const completedFiles = queue.filter(item => item.status === "completed");
+  const completedCount = completedFiles.length;
+  
+  if (queueZipBtn) {
+    queueZipBtn.disabled = completedCount === 0;
+    
+    if (completedCount === 0) {
+      queueZipBtn.textContent = "📦 Download All";
+    } else if (completedCount === 1) {
+      queueZipBtn.textContent = "⬇ Download File";
+    } else {
+      queueZipBtn.textContent = `📦 Download All as ZIP (${completedCount})`;
+    }
+  }
+  
+  // Update history download button (will be updated when loadOutputFiles is called)
+}
+
+async function downloadQueueFiles() {
+  const completedFiles = queue.filter(item => item.status === "completed");
+  
+  if (completedFiles.length === 0) {
+    feedback = "No completed files to download.";
+    updateDOM();
+    return;
+  }
+  
+  // Smart download: single file downloads directly, multiple files as ZIP
+  if (completedFiles.length === 1) {
+    const file = completedFiles[0];
+    if (file.downloadUrl) {
+      const a = document.createElement("a");
+      a.href = file.downloadUrl;
+      a.download = file.outputName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      feedback = "File downloaded.";
+      updateDOM();
+      return;
+    }
+  }
+  
+  // Multiple files - create ZIP
+  try {
+    feedback = "Creating ZIP archive...";
+    updateDOM();
+    
+    // Send file paths to backend
+    const filePaths = completedFiles
+      .filter(f => f.outputPath)
+      .map(f => f.outputPath);
+    
+    const response = await fetch("/api/download-queue-zip", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ files: filePaths }),
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.message || "Failed to create ZIP");
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    
+    // Extract filename from Content-Disposition header
+    const disposition = response.headers.get("Content-Disposition");
+    const filenameMatch = disposition?.match(/filename="(.+)"/);
+    a.download = filenameMatch?.[1] || "markdone-exports.zip";
+    
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    feedback = `Downloaded ${completedFiles.length} file(s) as ZIP.`;
+  } catch (error) {
+    feedback = error.message || "Failed to download ZIP archive.";
+  }
+  updateDOM();
+}
+
+async function downloadHistoryFiles() {
+  try {
+    feedback = "Creating ZIP archive...";
+    updateDOM();
+    
+    const response = await fetch("/api/download-history-zip");
+    
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.message || "Failed to create ZIP");
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    
+    const disposition = response.headers.get("Content-Disposition");
+    const filenameMatch = disposition?.match(/filename="(.+)"/);
+    a.download = filenameMatch?.[1] || "markdone-history.zip";
+    
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    feedback = "History downloaded as ZIP.";
+  } catch (error) {
+    feedback = error.message || "Failed to download ZIP archive.";
+  }
+  updateDOM();
+}
+
 async function loadOutputFiles() {
   const tbody = document.getElementById("output-body");
+  const downloadHistoryBtn = document.getElementById("download-history-zip-button");
   if (!tbody) return;
 
   try {
@@ -451,7 +582,11 @@ async function loadOutputFiles() {
     const files = data.files || [];
 
     if (files.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" class="small">No converted files yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="small">No completed files yet.</td></tr>`;
+      if (downloadHistoryBtn) {
+        downloadHistoryBtn.disabled = true;
+        downloadHistoryBtn.textContent = "📦 Download All";
+      }
       return;
     }
 
@@ -489,8 +624,22 @@ async function loadOutputFiles() {
 
       tbody.appendChild(tr);
     });
+    
+    // Update history download button
+    if (downloadHistoryBtn) {
+      downloadHistoryBtn.disabled = false;
+      if (files.length === 1) {
+        downloadHistoryBtn.textContent = "⬇ Download File";
+      } else {
+        downloadHistoryBtn.textContent = `📦 Download All as ZIP (${files.length})`;
+      }
+    }
   } catch {
     tbody.innerHTML = `<tr><td colspan="4" class="small">Could not load output files.</td></tr>`;
+    if (downloadHistoryBtn) {
+      downloadHistoryBtn.disabled = true;
+      downloadHistoryBtn.textContent = "📦 Download All";
+    }
   }
 }
 

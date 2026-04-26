@@ -271,6 +271,65 @@ async function cleanupUploads() {
 }
 
 function buildDownloadUrl(outputFileName: string | null): string | null {
+// ── ZIP Archive Creation ──────────────────────────────────────────────────
+async function createZipArchive(files: Array<{ path: string; name: string }>): Promise<Uint8Array> {
+  // Use the zip command-line tool which is available in most systems
+  const tempZipPath = join(config.uploadDir, `temp-${crypto.randomUUID()}.zip`);
+  
+  try {
+    // Create a temporary directory for staging files
+    const tempDir = join(config.uploadDir, `zip-staging-${crypto.randomUUID()}`);
+    await ensureDir(tempDir);
+    
+    // Copy files to temp directory with their desired names
+    for (const file of files) {
+      const destPath = join(tempDir, file.name);
+      await Deno.copyFile(file.path, destPath);
+    }
+    
+    // Create ZIP using command line
+    const proc = new Deno.Command("zip", {
+      args: ["-r", "-j", tempZipPath, "."],
+      cwd: tempDir,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    
+    const { code, stderr } = await proc.output();
+    
+    if (code !== 0) {
+      const errorText = new TextDecoder().decode(stderr);
+      throw new Error(`ZIP creation failed: ${errorText}`);
+    }
+    
+    // Read the ZIP file
+    const zipData = await Deno.readFile(tempZipPath);
+    
+    // Cleanup
+    await Deno.remove(tempDir, { recursive: true });
+    await Deno.remove(tempZipPath);
+    
+    return zipData;
+  } catch (error) {
+    // Cleanup on error
+    try {
+      await Deno.remove(tempZipPath);
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
+}
+
+function getTimestampedZipName(prefix: string = "markdone-exports"): string {
+  const now = new Date();
+  const timestamp = now.toISOString()
+    .replace(/[:.]/g, "-")
+    .replace("T", "-")
+    .slice(0, 19);
+  return `${prefix}-${timestamp}.zip`;
+}
+
   return outputFileName ? `/api/downloads/${encodeURIComponent(outputFileName)}` : null;
 }
 
@@ -704,6 +763,104 @@ router.delete("/api/outputs", async (ctx: Context) => {
       // directory may not exist
     }
   }
+
+
+// POST /api/download-queue-zip - Download completed queue files as ZIP
+router.post("/api/download-queue-zip", async (ctx) => {
+  try {
+    const body = await ctx.request.body.json();
+    const filePaths = body.files as string[];
+    
+    if (!filePaths || filePaths.length === 0) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "No files specified" };
+      return;
+    }
+    
+    // Validate and collect files
+    const files: Array<{ path: string; name: string }> = [];
+    for (const filePath of filePaths) {
+      // Security: ensure file is in output directory
+      const normalizedPath = normalize(filePath);
+      if (!normalizedPath.startsWith(config.vaultOutputDir)) {
+        continue; // Skip files outside output directory
+      }
+      
+      try {
+        await Deno.stat(normalizedPath);
+        files.push({
+          path: normalizedPath,
+          name: basename(normalizedPath),
+        });
+      } catch {
+        // Skip files that don't exist
+        continue;
+      }
+    }
+    
+    if (files.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "No valid files found" };
+      return;
+    }
+    
+    // Create ZIP archive
+    const zipData = await createZipArchive(files);
+    const filename = getTimestampedZipName("markdone-queue");
+    
+    ctx.response.headers.set("Content-Type", "application/zip");
+    ctx.response.headers.set(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    ctx.response.body = zipData;
+  } catch (error) {
+    console.error("Error creating queue ZIP:", error);
+    ctx.response.status = 500;
+    ctx.response.body = { message: "Failed to create ZIP archive" };
+  }
+});
+
+// GET /api/download-history-zip - Download all history files as ZIP
+router.get("/api/download-history-zip", async (ctx) => {
+  try {
+    const files: Array<{ path: string; name: string }> = [];
+    
+    // Collect all files from the output directory
+    for await (const entry of walk(config.vaultOutputDir, { 
+      maxDepth: 1,
+      includeDirs: false 
+    })) {
+      if (entry.isFile) {
+        files.push({
+          path: entry.path,
+          name: basename(entry.path),
+        });
+      }
+    }
+    
+    if (files.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "No files available in history" };
+      return;
+    }
+    
+    // Create ZIP archive
+    const zipData = await createZipArchive(files);
+    const filename = getTimestampedZipName("markdone-history");
+    
+    ctx.response.headers.set("Content-Type", "application/zip");
+    ctx.response.headers.set(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    ctx.response.body = zipData;
+  } catch (error) {
+    console.error("Error creating history ZIP:", error);
+    ctx.response.status = 500;
+    ctx.response.body = { message: "Failed to create ZIP archive" };
+  }
+});
 
   ctx.response.body = { deleted, message: `${deleted} output file(s) cleared.` };
 });

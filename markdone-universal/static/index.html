@@ -361,6 +361,24 @@
         padding: 16px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         color: var(--text-main);
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      
+      /* Allow wrapping for Name column (first column) */
+      tbody td:first-child {
+        max-width: 250px;
+        word-break: break-word;
+        white-space: normal;
+      }
+      
+      /* Allow wrapping for Output column (6th column) */
+      tbody td:nth-child(6) {
+        max-width: 200px;
+        word-break: break-word;
+        white-space: normal;
       }
       tbody tr:last-child td { border-bottom: none; }
       tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
@@ -532,6 +550,7 @@
         <div class="action-bar">
           <button id="convert-button" class="btn btn-primary">Process Queue</button>
           <button id="clear-button" class="btn btn-secondary">Purge Staging</button>
+          <button id="download-queue-zip-button" class="btn btn-secondary" disabled>📦 Download All</button>
         </div>
       </div>
 
@@ -563,33 +582,34 @@
         </div>
       </div>
 
-      <!-- Secure Artifacts (History) -->
+      <!-- Completed Files (History) -->
       <div class="glass-card output-section">
         <div class="section-header">
-          <div class="section-icon">🛡️</div>
-          <h2 class="section-heading">Secure Artifacts Vault</h2>
+          <div class="section-icon">📁</div>
+          <h2 class="section-heading">Completed Files</h2>
         </div>
-        <p class="section-desc">Completed conversions ready for secure extraction to host device.</p>
+        <p class="section-desc">Successfully converted files ready for download.</p>
         
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Artifact Name</th>
+                <th>File Name</th>
                 <th>Size</th>
-                <th>Processed Timestamp</th>
+                <th>Completed At</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="output-body">
               <tr>
-                <td colspan="4" class="small" style="text-align: center; padding: 24px;">Vault is empty.</td>
+                <td colspan="4" class="small" style="text-align: center; padding: 24px;">No completed files yet.</td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="action-bar" style="margin-top: 20px;">
-          <button id="clear-history-button" class="btn-danger-ghost">🗑 Purge Artifacts</button>
+          <button id="download-history-zip-button" class="btn btn-secondary" disabled>📦 Download All</button>
+          <button id="clear-history-button" class="btn-danger-ghost">🗑 Delete All Files</button>
         </div>
       </div>
 

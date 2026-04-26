@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-04-26
+
+### Added
+- **Bulk Download Feature**: Download multiple converted files as a single ZIP archive
+  - Smart download behavior: Single files download directly, 2+ files download as ZIP
+  - "📦 Download All" button in Processing Queue section for completed conversions
+  - "📦 Download All" button in Completed Files section for historical downloads
+  - Timestamped ZIP filenames (e.g., `markdone-queue-2026-04-26-15-30-45.zip`)
+  - Backend ZIP creation utility using system `zip` command with temporary staging
+  - Two new API endpoints: `POST /api/download-queue-zip` and `GET /api/download-history-zip`
+  - Dynamic button text based on file count (e.g., "Download 1 File" vs "Download 3 Files as ZIP")
+
+### Changed
+- **UI Terminology Improvements**: Replaced technical jargon with user-friendly terms
+  - "Secure Artifacts Vault" → "Completed Files" (with 📁 icon)
+  - "Purge Artifacts" → "Delete All Files" (with 🗑 icon)
+  - Updated section descriptions for better clarity
+- **Table Layout Fixes**: Improved handling of long filenames in Processing Queue
+  - Added CSS `text-overflow: ellipsis` for Name column
+  - Added `word-break: break-word` for Output column
+  - Set `max-width` constraints to prevent table overflow
+
+### Fixed
+- Long filenames no longer break the Processing Queue table layout
+- Table columns now properly constrain and wrap content
+
+### Technical Details
+
+#### Bulk Download Architecture
+```
+Frontend Request → Backend ZIP Creation → Temporary Directory → System zip Command → Response Stream
+```
+
+#### Files Modified
+- `markdone-universal/server.ts` - ZIP creation utility and download endpoints (lines 276-863)
+- `markdone-universal/static/index.html` - UI updates, CSS fixes, new buttons (lines 360-613)
+- `markdone-universal/static/app.js` - Download logic and button management (lines 444-590)
+
+#### API Endpoints Added
+- `POST /api/download-queue-zip` - Download selected files from processing queue as ZIP
+- `GET /api/download-history-zip` - Download all completed files as ZIP
+
+### Documentation
+- Added `docs/browser-cache-fix.md` - Troubleshooting guide for browser caching issues
+- Added `docs/download-all-implementation-summary.md` - Complete implementation summary
+
+---
+
+## [2.0.1] - 2026-04-25
+
 ### Added
 - **Real-time Progress Tracking via SSE**: Large file conversions (50+ page PDFs, multi-sheet XLSX) now display live progress updates with percentage and page/sheet numbers
   - New SSE endpoint `/api/convert/progress/:conversionId` for streaming progress events
