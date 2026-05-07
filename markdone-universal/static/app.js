@@ -225,8 +225,9 @@ function connectToProgress(conversionId, itemId) {
     const item = queue.find(i => i.id === itemId);
     if (item) {
       item.status = "completed";
-      item.downloadUrl = data.downloadUrl || "";
-      item.outputName = data.outputFileName || "";
+      item.downloadUrl = data.downloadUrl || item.downloadUrl || "";
+      item.outputName = data.outputFileName || item.outputName || "";
+      item.outputPath = data.outputPath || item.outputPath || "";
     }
     eventSource.close();
     updateDOM();
@@ -450,8 +451,13 @@ async function clearHistory() {
 function updateDownloadButtons() {
   // Update queue download button
   const queueZipBtn = document.getElementById("download-queue-zip-button");
-  const completedFiles = queue.filter(item => item.status === "completed");
-  const completedCount = completedFiles.length;
+  const downloadableQueueFiles = queue.filter((item) =>
+    item.status === "completed" && (
+      (typeof item.downloadUrl === "string" && item.downloadUrl.trim().length > 0) ||
+      (typeof item.outputPath === "string" && item.outputPath.trim().length > 0)
+    )
+  );
+  const completedCount = downloadableQueueFiles.length;
   
   if (queueZipBtn) {
     queueZipBtn.disabled = completedCount === 0;
@@ -469,7 +475,12 @@ function updateDownloadButtons() {
 }
 
 async function downloadQueueFiles() {
-  const completedFiles = queue.filter(item => item.status === "completed");
+  const completedFiles = queue.filter((item) =>
+    item.status === "completed" && (
+      (typeof item.downloadUrl === "string" && item.downloadUrl.trim().length > 0) ||
+      (typeof item.outputPath === "string" && item.outputPath.trim().length > 0)
+    )
+  );
   
   if (completedFiles.length === 0) {
     feedback = "No completed files to download.";
@@ -491,6 +502,34 @@ async function downloadQueueFiles() {
       updateDOM();
       return;
     }
+
+    if (file.outputPath) {
+      const response = await fetch("/api/download-queue-zip", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ files: [file.outputPath] }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || "Failed to download file");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.outputName || "markdone-export.zip";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      feedback = "File downloaded.";
+      updateDOM();
+      return;
+    }
   }
   
   // Multiple files - create ZIP
@@ -498,10 +537,14 @@ async function downloadQueueFiles() {
     feedback = "Creating ZIP archive...";
     updateDOM();
     
-    // Send file paths to backend
+    // Send validated backend output paths to ZIP endpoint
     const filePaths = completedFiles
-      .filter(f => f.outputPath)
-      .map(f => f.outputPath);
+      .map((file) => file.outputPath)
+      .filter((outputPath) => typeof outputPath === "string" && outputPath.trim().length > 0);
+
+    if (filePaths.length === 0) {
+      throw new Error("No valid completed output files available for ZIP download.");
+    }
     
     const response = await fetch("/api/download-queue-zip", {
       method: "POST",

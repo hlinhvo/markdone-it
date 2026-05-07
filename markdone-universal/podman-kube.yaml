@@ -44,7 +44,7 @@ spec:
   volumes:
     - name: markdone-vault
       hostPath:
-        path: {{VAULT_PATH}}
+        path: /Users/linhvh/IBM-Bob/MarkDone-v2/markdone-universal/outputs/vault
         type: Directory
 
 # Made with Bob

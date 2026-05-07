@@ -271,53 +271,48 @@ async function cleanupUploads() {
 }
 
 function buildDownloadUrl(outputFileName: string | null): string | null {
+  return outputFileName ? `/api/downloads/${encodeURIComponent(outputFileName)}` : null;
+}
+
 // ── ZIP Archive Creation ──────────────────────────────────────────────────
 async function createZipArchive(files: Array<{ path: string; name: string }>): Promise<Uint8Array> {
-  // Use the zip command-line tool which is available in most systems
   const tempZipPath = join(config.uploadDir, `temp-${crypto.randomUUID()}.zip`);
-  
+  const tempDir = join(config.uploadDir, `zip-staging-${crypto.randomUUID()}`);
+
   try {
-    // Create a temporary directory for staging files
-    const tempDir = join(config.uploadDir, `zip-staging-${crypto.randomUUID()}`);
     await ensureDir(tempDir);
-    
-    // Copy files to temp directory with their desired names
+
     for (const file of files) {
       const destPath = join(tempDir, file.name);
       await Deno.copyFile(file.path, destPath);
     }
-    
-    // Create ZIP using command line
+
     const proc = new Deno.Command("zip", {
       args: ["-r", "-j", tempZipPath, "."],
       cwd: tempDir,
       stdout: "piped",
       stderr: "piped",
     });
-    
+
     const { code, stderr } = await proc.output();
-    
+
     if (code !== 0) {
       const errorText = new TextDecoder().decode(stderr);
       throw new Error(`ZIP creation failed: ${errorText}`);
     }
-    
-    // Read the ZIP file
-    const zipData = await Deno.readFile(tempZipPath);
-    
-    // Cleanup
-    await Deno.remove(tempDir, { recursive: true });
-    await Deno.remove(tempZipPath);
-    
-    return zipData;
-  } catch (error) {
-    // Cleanup on error
+
+    return await Deno.readFile(tempZipPath);
+  } finally {
+    try {
+      await Deno.remove(tempDir, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
     try {
       await Deno.remove(tempZipPath);
     } catch {
       // Ignore cleanup errors
     }
-    throw error;
   }
 }
 
@@ -328,9 +323,6 @@ function getTimestampedZipName(prefix: string = "markdone-exports"): string {
     .replace("T", "-")
     .slice(0, 19);
   return `${prefix}-${timestamp}.zip`;
-}
-
-  return outputFileName ? `/api/downloads/${encodeURIComponent(outputFileName)}` : null;
 }
 
 async function runPythonConversion(
@@ -764,6 +756,8 @@ router.delete("/api/outputs", async (ctx: Context) => {
     }
   }
 
+  ctx.response.body = { deleted, message: `${deleted} output file(s) cleared.` };
+});
 
 // POST /api/download-queue-zip - Download completed queue files as ZIP
 router.post("/api/download-queue-zip", async (ctx) => {
@@ -779,23 +773,53 @@ router.post("/api/download-queue-zip", async (ctx) => {
     
     // Validate and collect files
     const files: Array<{ path: string; name: string }> = [];
+    const allowedDirectories = [normalize(config.vaultOutputDir), normalize(config.outputDir)];
+
     for (const filePath of filePaths) {
-      // Security: ensure file is in output directory
-      const normalizedPath = normalize(filePath);
-      if (!normalizedPath.startsWith(config.vaultOutputDir)) {
-        continue; // Skip files outside output directory
+      const normalizedInputPath = normalize(filePath);
+      const candidatePaths = new Set<string>();
+
+      if (normalizedInputPath.startsWith("/")) {
+        candidatePaths.add(normalizedInputPath);
+      } else {
+        candidatePaths.add(normalize(join(Deno.cwd(), normalizedInputPath)));
+
+        const outputIndex = normalizedInputPath.lastIndexOf("/outputs/");
+        if (outputIndex >= 0) {
+          const outputRelativePath = normalizedInputPath.slice(outputIndex + "/outputs/".length);
+          candidatePaths.add(normalize(join(config.outputDir, outputRelativePath)));
+        }
+
+        const vaultIndex = normalizedInputPath.lastIndexOf("/vault/");
+        if (vaultIndex >= 0) {
+          const vaultRelativePath = normalizedInputPath.slice(vaultIndex + "/vault/".length);
+          candidatePaths.add(normalize(join(config.vaultOutputDir, vaultRelativePath)));
+        }
       }
-      
-      try {
-        await Deno.stat(normalizedPath);
-        files.push({
-          path: normalizedPath,
-          name: basename(normalizedPath),
-        });
-      } catch {
-        // Skip files that don't exist
+
+      let resolvedPath: string | null = null;
+      for (const candidatePath of candidatePaths) {
+        if (!allowedDirectories.some((directory) => candidatePath.startsWith(directory))) {
+          continue;
+        }
+
+        try {
+          await Deno.stat(candidatePath);
+          resolvedPath = candidatePath;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!resolvedPath) {
         continue;
       }
+
+      files.push({
+        path: resolvedPath,
+        name: basename(resolvedPath),
+      });
     }
     
     if (files.length === 0) {
@@ -860,9 +884,6 @@ router.get("/api/download-history-zip", async (ctx) => {
     ctx.response.status = 500;
     ctx.response.body = { message: "Failed to create ZIP archive" };
   }
-});
-
-  ctx.response.body = { deleted, message: `${deleted} output file(s) cleared.` };
 });
 
 router.post("/api/convert", async (ctx: Context) => {
@@ -1042,6 +1063,7 @@ router.post("/api/convert", async (ctx: Context) => {
         sendSSEComplete(conversionId, {
           outputFileName: xlsxOutputFileName,
           downloadUrl: buildDownloadUrl(xlsxOutputFileName),
+          outputPath: xlsxOutputPath,
         });
         continue;
       } else if (fileTarget === "vault_md") {
@@ -1078,6 +1100,7 @@ router.post("/api/convert", async (ctx: Context) => {
       sendSSEComplete(conversionId, {
         outputFileName,
         downloadUrl: buildDownloadUrl(outputFileName),
+        outputPath,
       });
     } catch (error) {
       const knownError = typeof error === "object" && error !== null && "code" in error

@@ -21,6 +21,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
         pandoc \
+        zip \
         libpango-1.0-0 \
         libpangocairo-1.0-0 \
         libcairo2 \
@@ -69,4 +70,4 @@ RUN deno cache server.ts
 
 EXPOSE 7482
 
-CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=python3,pandoc", "server.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=python3,pandoc,zip", "server.ts"]

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-05-07
+
+### Bug Fixes
+- Fixed [`download-queue-zip-button`](markdone-universal/static/index.html) behavior to correctly generate ZIP archives of queued files without affecting completed files deletion behavior
+- Moved queue-related control buttons for queue ZIP download and queue clearing from the [`Secure Data Ingestion`](markdone-universal/static/index.html) panel to the [`Processing Queue`](markdone-universal/static/index.html) panel for improved UI organization and logical grouping
+- Renamed the purge action label from `Purge Staging` to `Clear Processing Queue` for better clarity
+
+### Improvements
+- Reorganized the UI layout to place queue management controls in the appropriate [`Processing Queue`](markdone-universal/static/index.html) section
+- Verified both [`/api/download-history-zip`](markdone-universal/server.ts:849) and [`/api/download-queue-zip`](markdone-universal/server.ts:763) endpoints are functioning correctly via live testing
+- Improved queue ZIP path resolution and completion metadata handling across [`markdone-universal/static/app.js`](markdone-universal/static/app.js), [`markdone-universal/server.ts`](markdone-universal/server.ts), and deployment/runtime configuration in [`markdone-universal/Containerfile`](markdone-universal/Containerfile) and [`markdone-universal/podman-kube.yaml`](markdone-universal/podman-kube.yaml)
+
 ## [2.2.0] - 2026-04-26
 
 ### Added
